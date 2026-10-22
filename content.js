@@ -17,7 +17,6 @@ function extractSummary(title) {
 }
 
 
-
 function extractJob() {
   const description = document.querySelector(
     ".jobs-show-main-description__section"
@@ -45,4 +44,5 @@ function extractJob() {
 }
 
 console.log("[Axios] Job:", extractJob());
+
 
