@@ -5,8 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="06320ab6-cb74-44a9-9859-e4328495164f" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/ai interface/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/.env.example" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ai interface/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/server.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -47,7 +46,7 @@
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "codeWithMe.voiceChat.enabledByDefault": "false",
-    "git-widget-placeholder": "#5 on ai-interface",
+    "git-widget-placeholder": "ai-interface",
     "git.auto.fetch.suggestion.counter": "1",
     "last_opened_file_path": "/home/forcedev/Documents/new work/Axios",
     "node.js.detected.package.jshint": "true",
