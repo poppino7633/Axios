@@ -53,6 +53,7 @@ html.popup body {
   height: var(--popup-height);
   min-height: 0;
   overflow: hidden;
+  overflow: clip; /* spre deosebire de hidden, nu poate fi derulat nici de focus/scrollIntoView */
 }
 
 html.popup #root {
@@ -253,6 +254,7 @@ h1 {
 }
 
 .custom-checkbox {
+  position: relative; /* ține input-ul ascuns în interiorul rândului (altfel focusul derula pagina) */
   display: flex;
   align-items: center;
   gap: 10px;
@@ -266,6 +268,8 @@ h1 {
 /* Ascuns vizual, dar rămâne accesibil din tastatură și pentru screen readere */
 .custom-checkbox input {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 1px;
   height: 1px;
   opacity: 0;
@@ -298,13 +302,14 @@ h1 {
 }
 
 .custom-checkbox.checked .checkbox-indicator::after {
-  /* bifa este iconița check.svg, desenată cu culoarea de fundal (mask) */
+  /* bifa este iconița check-bold.svg, desenată cu culoarea de fundal (mask) */
   content: '';
   position: absolute;
-  inset: 1px;
+  inset: 0;
   background-color: white;
-  -webkit-mask: url('./assets/icons/check.svg') center / contain no-repeat;
-  mask: url('./assets/icons/check.svg') center / contain no-repeat;
+  /* bifă mai groasă decât check.svg, ca să se vadă clar în căsuța de 14px */
+  -webkit-mask: url('./assets/icons/check-bold.svg') center / contain no-repeat;
+  mask: url('./assets/icons/check-bold.svg') center / contain no-repeat;
 }
 
 .checkbox-text { font-size: 0.85rem; font-weight: 500; }
