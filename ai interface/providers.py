@@ -3,12 +3,14 @@
 Everything is configured from `ai interface/.env`; switching provider or model never needs a code change:
 
     AI_PROVIDER=gemini                 # see PROVIDERS below
-    AI_MODEL=gemini-flash-latest       # optional, each provider has a default
+    AI_MODEL=gemini-3.5-flash          # optional, each provider has a default
     AI_FALLBACK_MODELS=a,b             # optional, tried in order when the model is overloaded
     AI_API_KEY=...                     # optional, otherwise the provider's own variable is used
                                        # (GEMINI_API_KEY, OPENAI_API_KEY, HF_TOKEN, ...), so several
                                        # keys can live in .env side by side
     AI_BASE_URL=...                    # optional, overrides the provider's endpoint
+    AI_THINKING=minimal                # optional, gemini only: thinkingLevel (minimal/low/medium/high);
+                                       # empty = the model's default
 
 Supported providers:
     gemini      Google AI Studio (native API)
@@ -78,17 +80,20 @@ def _post_json(url, headers, payload, provider):
 # --- API styles ---------------------------------------------------------------
 
 def _gemini(config, system_prompt, user_text, model):
+    generation_config = {
+        "temperature": TEMPERATURE,
+        "maxOutputTokens": MAX_TOKENS,
+        "responseMimeType": "application/json",
+    }
+    if config["thinking"]:
+        generation_config["thinkingConfig"] = {"thinkingLevel": config["thinking"]}
     body = _post_json(
         f"{config['base_url']}/models/{model}:generateContent",
         {"x-goog-api-key": config["api_key"]},
         {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
             "contents": [{"role": "user", "parts": [{"text": user_text}]}],
-            "generationConfig": {
-                "temperature": TEMPERATURE,
-                "maxOutputTokens": MAX_TOKENS,
-                "responseMimeType": "application/json",
-            },
+            "generationConfig": generation_config,
         },
         config["name"],
     )
@@ -138,8 +143,8 @@ def _openai_compatible(config, system_prompt, user_text, model):
 PROVIDERS = {
     "gemini": {
         "style": _gemini, "base_url": "https://generativelanguage.googleapis.com/v1beta",
-        "key_env": "GEMINI_API_KEY", "model": "gemini-flash-latest",
-        "fallback_models": "gemini-flash-lite-latest,gemini-2.5-flash",
+        "key_env": "GEMINI_API_KEY", "model": "gemini-3.5-flash", "thinking": "minimal",
+        "fallback_models": "gemini-3.5-flash-lite,gemini-3.1-flash-lite",
     },
     "anthropic": {
         "style": _anthropic, "base_url": "https://api.anthropic.com/v1",
@@ -197,6 +202,7 @@ def get_config():
         "base_url": (os.environ.get("AI_BASE_URL") or preset["base_url"] or "").rstrip("/"),
         "api_key": os.environ.get("AI_API_KEY") or (os.environ.get(preset["key_env"]) if preset["key_env"] else None),
         "model": os.environ.get("AI_MODEL") or preset.get("model"),
+        "thinking": os.environ.get("AI_THINKING", preset.get("thinking", "")).strip(),
         "fallback_models": [m.strip() for m in os.environ.get("AI_FALLBACK_MODELS", preset.get("fallback_models", "")).split(",") if m.strip()],
     }
     if not config["base_url"]:
@@ -217,6 +223,7 @@ def complete(system_prompt, user_text, model=None):
     """Send one system + user message and return the reply text.
 
     Retries temporary failures (rate limits, overload) and then moves on to AI_FALLBACK_MODELS.
+    A model that doesn't exist (404) is skipped straight away.
     """
     config = get_config()
     model = model or config["model"]
@@ -230,6 +237,8 @@ def complete(system_prompt, user_text, model=None):
                 return config["style"](config, system_prompt, user_text, m)
             except ProviderError as e:
                 last_error = ProviderError(f"{e} (model: {m})", status=e.status)
+                if e.status == 404:
+                    break
                 if not e.retryable:
                     raise last_error from e
                 time.sleep(1 + attempt * 2)

@@ -47,35 +47,27 @@ Respond with ONLY a JSON object, no prose, no markdown fences:
   "language": string          // language the person wrote in, e.g. "Romanian"
 }"""
 
-RATE_PROMPT = """You assess how suitable a job posting is for a specific person.
-
-The person's needs:
+RATE_PROMPT = """Rate how suitable this job posting is for a person with these needs:
 {profile}
 
 Rules:
-- Base everything on the posting text. You may add conditions that are inherent to the type of job
-  (e.g. construction work involves heavy physical labour, a call-centre job involves long phone calls),
-  but mark those as "typical" rather than "stated". Never invent specifics such as salary, schedule,
-  location, benefits or equipment that the posting does not mention.
-- If the posting relies on vague phrases instead of facts (e.g. "salariu motivant", "loc de muncă plăcut",
-  "echipă tânără și dinamică", "competitive salary") or omits basic information (schedule, location,
-  physical demands, pay), set "vague" to true and list what is vague or missing.
-- The rating is 1-10: 10 = clearly compatible with every need, 1 = clearly incompatible.
-  When information is missing, do not assume the best or the worst; keep the rating moderate and say why.
-- Write all text in {language}.
+- Always list the conditions inherent to the job title/type, marked "typical" (e.g. "muncitor" or
+  construction = heavy physical labour, standing; call centre = long phone calls), and judge the needs
+  against them too. Everything else must come from the posting ("stated"); never invent salary,
+  schedule, location or benefits.
+- Vague phrases instead of facts ("salariu motivant", "loc de muncă plăcut", ...) or missing basics
+  (pay, schedule, location, physical demands) mean "vague": true.
+- Rating 1-10 (10 = fits every need). Missing information keeps it moderate, not high or low.
+- Be brief: short phrases, at most 5 work conditions. Write in {language}.
 
-Respond with ONLY a JSON object, no prose, no markdown fences:
+Respond with ONLY this JSON:
 {{
-  "rating": integer,                  // 1-10
-  "rating_explanation": string,
-  "work_conditions": [
-    {{"condition": string, "source": "stated" | "typical"}}
-  ],
-  "compatible_with_needs": [string],  // needs this job appears to satisfy, and why
-  "conflicts_with_needs": [string],   // needs this job appears to violate, and why
-  "unknown_for_needs": [string],      // needs the posting gives no information about
+  "rating": integer,
+  "rating_explanation": string,       // 1-2 sentences
+  "work_conditions": [{{"condition": string, "source": "stated" | "typical"}}],
+  "conflicts_with_needs": [string],   // needs this job violates
   "vague": boolean,
-  "vague_details": [string]           // vague phrases quoted from the posting / missing information
+  "vague_details": [string]           // vague phrases quoted, or missing information
 }}"""
 
 GUIDE_PROMPT = """You help a specific person apply for a job.

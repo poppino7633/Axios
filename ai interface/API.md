@@ -11,7 +11,7 @@ The AI server runs on one laptop. The extension calls it over the wifi network. 
 | **Content type** | Send `Content-Type: application/json` with every POST. |
 | **CORS** | Requests from any origin are allowed, and the `X-Axios-Token` header is allowed in preflight. |
 | **Manifest** | Add `"http://10.200.20.64:8765/*"` to `host_permissions` in `extension/manifest.json`. In Firefox the user may have to grant it under *about:addons → Axios → Permissions*. |
-| **Speed** | `/profile`, `/rate` and `/guide` wait on the AI model and take **about 20–40 s**. Show a loading state and don't set short timeouts. |
+| **Speed** | Typical times: `/profile` ~2 s, `/rate` ~3–6 s, `/guide` ~20 s. They can take longer when the AI provider is busy. Show a loading state and don't set short timeouts. |
 
 Quick connectivity check from any laptop on the wifi:
 
@@ -40,7 +40,7 @@ Checks the server is up. **No token needed.**
 {
   "status": "ok",
   "provider": "gemini",
-  "model": "gemini-flash-latest"
+  "model": "gemini-3.5-flash"
 }
 ```
 
@@ -123,9 +123,7 @@ Rates how well a job fits the user's profile, describes the work conditions, and
     { "condition": "Hybrid work model (2 days per week in Bucharest office)", "source": "stated" },
     { "condition": "Predominantly seated position", "source": "typical" }
   ],
-  "compatible_with_needs": ["No heavy lifting: standard software work involves no physical loads."],
   "conflicts_with_needs": [],
-  "unknown_for_needs": ["Flexible working hours: the posting does not mention schedule flexibility."],
   "vague": true,
   "vague_details": ["Missing compensation/salary details"],
   "source_url": "https://www.ejobs.ro/user/locuri-de-munca/..."
@@ -135,11 +133,9 @@ Rates how well a job fits the user's profile, describes the work conditions, and
 | Field | Type | Meaning |
 |---|---|---|
 | `rating` | integer 1–10 or `null` | 10 = clearly compatible, 1 = clearly incompatible. Always clamped to 1–10. `null` only if the model returned garbage. |
-| `rating_explanation` | string | Why this rating |
-| `work_conditions` | `{condition, source}[]` | `source` is `"stated"` (in the posting) or `"typical"` (inferred from the job type, e.g. construction means heavy labour). Show these differently in the UI. |
-| `compatible_with_needs` | string[] | Needs the job appears to meet, with the reason |
-| `conflicts_with_needs` | string[] | Needs the job appears to break, with the reason |
-| `unknown_for_needs` | string[] | Needs the posting says nothing about |
+| `rating_explanation` | string | Why this rating, in 1–2 sentences |
+| `work_conditions` | `{condition, source}[]` | At most 5. `source` is `"stated"` (in the posting) or `"typical"` (inferred from the job type, e.g. construction means heavy labour). Show these differently in the UI. |
+| `conflicts_with_needs` | string[] | Needs from the profile that the job appears to break (empty if none) |
 | `vague` | boolean | `true` if the posting uses empty phrases ("salariu motivant", "loc de muncă plăcut", ...) or leaves out basics. Also forced to `true` if `description` is under 300 characters. |
 | `vague_details` | string[] | The vague phrases quoted, or the missing information |
 | `source_url` | string | Copied from `job.url` |
@@ -223,7 +219,7 @@ await browser.storage.local.set({ profile });
 const { profile: stored } = await browser.storage.local.get("profile");
 if (!stored) { /* ask the user to fill in their needs first */ }
 const job = await browser.tabs.sendMessage(tab.id, { type: "GET_JOB_DATA" });
-const rating = await axios("/rate", { job, profile: stored });   // ~20-40 s
+const rating = await axios("/rate", { job, profile: stored });   // ~3-6 s
 
 // 3. on demand
 const guide = await axios("/guide", { job, profile: stored });
