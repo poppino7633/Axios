@@ -1,18 +1,19 @@
 """Axios AI interface.
 
-Three operations, each JSON in -> JSON out, backed by a free Hugging Face hosted model:
+Three operations, each JSON in -> JSON out, backed by whichever LLM provider is set in .env
+(see providers.py; currently Google AI Studio / Gemini):
 
   1. profile  - takes the user's description of their disabilities / difficulties / requirements
                 (plus a free-text "extras" box), trims it to a concise list of needs and saves it
                 locally. The saved profile is used as context for the other two operations.
-  2. rate     - takes a job listing (shape produced by content.js: {"url", "title", "text"}) and
+  2. rate     - takes a job listing (shape produced by extension/content.js: {"url", "title", "description", ...}) and
                 returns a 1-10 suitability rating, the work conditions, and a flag if the
                 description is too vague to judge.
   3. guide    - takes a job listing and returns an application guide: process, attire,
                 unspoken rules and tips, tailored to the user's needs.
 
 Usage:
-    put HF_TOKEN=hf_... in ai interface/.env (see .env.example)
+    configure the provider and key in ai interface/.env (see .env.example)
     python main.py profile user.json
     python main.py rate job.json [-o out.json]
     python main.py guide job.json [-o out.json]
@@ -24,26 +25,11 @@ import json
 import os
 import re
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
-
-def load_dotenv(path=Path(__file__).with_name(".env")):
-    """Load KEY=value lines from `ai interface/.env` into the environment (real env vars take priority)."""
-    if not path.exists():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, value = line.split("=", 1)
-            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+import providers  # also loads ai interface/.env
 
 
-load_dotenv()
-
-HF_API_URL = "https://router.huggingface.co/v1/chat/completions"
-DEFAULT_MODEL = os.environ.get("HF_MODEL", "openai/gpt-oss-120b")
 PROFILE_PATH = Path(os.environ.get("AXIOS_PROFILE", Path(__file__).with_name("profile.json")))
 
 # Descriptions shorter than this are flagged as vague regardless of what the model says.
@@ -122,39 +108,8 @@ Respond with ONLY a JSON object, no prose, no markdown fences:
 }}"""
 
 
-def call_hf(messages, model=DEFAULT_MODEL, max_tokens=4000, temperature=0.2):
-    token = os.environ.get("HF_TOKEN")
-    if not token:
-        raise RuntimeError("HF_TOKEN environment variable is not set")
-
-    payload = json.dumps({
-        "model": model,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        HF_API_URL,
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            body = json.load(resp)
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Hugging Face API error {e.code}: {e.read().decode('utf-8', 'replace')}") from e
-
-    return body["choices"][0]["message"]["content"]
-
-
 def extract_json(text):
     """Pull the first JSON object out of the model's reply (models sometimes wrap it in ``` fences)."""
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
     try:
         return json.loads(text)
@@ -165,13 +120,9 @@ def extract_json(text):
         raise
 
 
-def ask(system_prompt, user_content, model=DEFAULT_MODEL):
+def ask(system_prompt, user_content, model=None):
     """Send one request and return the parsed JSON reply, or an error object if parsing fails."""
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": json.dumps(user_content, ensure_ascii=False)},
-    ]
-    reply = call_hf(messages, model=model)
+    reply = providers.complete(system_prompt, json.dumps(user_content, ensure_ascii=False), model=model)
     try:
         return extract_json(reply)
     except json.JSONDecodeError:
@@ -180,7 +131,7 @@ def ask(system_prompt, user_content, model=DEFAULT_MODEL):
 
 # --- 1. profile -------------------------------------------------------------
 
-def build_profile(user_input, model=DEFAULT_MODEL, path=PROFILE_PATH):
+def build_profile(user_input, model=None, path=PROFILE_PATH):
     """Condense the user's free-form input into a list of needs and save it to `path`."""
     profile = ask(PROFILE_PROMPT, user_input, model=model)
     if "error" not in profile:
@@ -203,7 +154,7 @@ def profile_prefix(profile):
 
 # --- 2. rate ----------------------------------------------------------------
 
-def rate_job(job, profile=None, model=DEFAULT_MODEL):
+def rate_job(job, profile=None, model=None):
     """Rate a job listing against the user's needs and describe its work conditions."""
     profile = profile or load_profile()
     prompt = RATE_PROMPT.format(profile=profile_prefix(profile), language=profile.get("language", "Romanian"))
@@ -217,7 +168,7 @@ def rate_job(job, profile=None, model=DEFAULT_MODEL):
     except (TypeError, ValueError):
         result["rating"] = None
 
-    description = (job.get("text") or "").strip()
+    description = (job.get("description") or job.get("text") or "").strip()
     if len(description) < MIN_DESCRIPTION_CHARS:
         result["vague"] = True
         result.setdefault("vague_details", []).append(
@@ -230,7 +181,7 @@ def rate_job(job, profile=None, model=DEFAULT_MODEL):
 
 # --- 3. guide ---------------------------------------------------------------
 
-def application_guide(job, profile=None, model=DEFAULT_MODEL):
+def application_guide(job, profile=None, model=None):
     """Produce an application guide for a job listing, tailored to the user's needs."""
     profile = profile or load_profile()
     prompt = GUIDE_PROMPT.format(profile=profile_prefix(profile), language=profile.get("language", "Romanian"))
@@ -249,11 +200,11 @@ COMMANDS = {
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Axios AI interface (Hugging Face backed).")
+    parser = argparse.ArgumentParser(description="Axios AI interface.")
     parser.add_argument("command", choices=COMMANDS, help="operation to run")
     parser.add_argument("input", nargs="?", help="input JSON file (default: stdin)")
     parser.add_argument("-o", "--output", help="output JSON file (default: stdout)")
-    parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"HF model id (default: {DEFAULT_MODEL})")
+    parser.add_argument("-m", "--model", help="override AI_MODEL from .env for this run")
     args = parser.parse_args()
 
     if args.input:
