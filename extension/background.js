@@ -1,7 +1,10 @@
 
 const AXIOS_SERVER = "http://10.200.20.64:8765";
 
-// Authentication
+// --------------------------------------------------
+// AUTHENTICATION
+// --------------------------------------------------
+
 async function getToken() {
   const { axiosToken } = await browser.storage.local.get("axiosToken");
 
@@ -12,7 +15,10 @@ async function getToken() {
   return axiosToken;
 }
 
-// HTTP helper
+// --------------------------------------------------
+// HTTP API
+// --------------------------------------------------
+
 async function axiosRequest(path, body = null) {
   const token = await getToken();
 
@@ -34,126 +40,211 @@ async function axiosRequest(path, body = null) {
   return data;
 }
 
-// React UI message handlers
-browser.runtime.onMessage.addListener(async (message) => {
+// --------------------------------------------------
+// RESULT CACHE
+// --------------------------------------------------
+
+const CACHE_STORAGE_KEY = "resultCache";
+const CACHE_MAX_ENTRIES = 50;
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+const inFlight = new Map();
+
+let cacheWrites = Promise.resolve();
+
+async function sha256(value) {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    bytes
+  );
+
+  return Array.from(
+    new Uint8Array(digest),
+    byte => byte.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+async function cacheKey(kind, job, profile) {
+  if (!job?.url) {
+    throw new Error("Invalid job: missing URL");
+  }
+
+  const url = new URL(job.url);
+
+  // Remove query parameters and fragments.
+  const page = `${url.origin}${url.pathname}`;
+
+  const hash = await sha256({
+    job: {
+      ...job,
+      url: page
+    },
+    profile
+  });
+
+  return `${kind}:${page}:${hash}`;
+}
+
+async function readCache(key) {
+  const {
+    [CACHE_STORAGE_KEY]: cache = {}
+  } = await browser.storage.local.get(CACHE_STORAGE_KEY);
+
+  const entry = cache[key];
+
+  if (!entry) return null;
+
+  if (Date.now() - entry.savedAt >= CACHE_TTL_MS) {
+    return null;
+  }
+
+  return entry.result;
+}
+
+function writeCache(key, result) {
+  cacheWrites = cacheWrites.then(async () => {
+    const {
+      [CACHE_STORAGE_KEY]: cache = {}
+    } = await browser.storage.local.get(CACHE_STORAGE_KEY);
+
+    cache[key] = {
+      result,
+      savedAt: Date.now()
+    };
+
+    const now = Date.now();
+
+    const kept = Object.entries(cache)
+      .filter(([, entry]) =>
+        now - entry.savedAt < CACHE_TTL_MS
+      )
+      .sort(([, a], [, b]) =>
+        b.savedAt - a.savedAt
+      )
+      .slice(0, CACHE_MAX_ENTRIES);
+
+    await browser.storage.local.set({
+      [CACHE_STORAGE_KEY]: Object.fromEntries(kept)
+    });
+  }).catch(error => {
+    console.error("[Axios] Cache write failed:", error);
+  });
+
+  return cacheWrites;
+}
+
+function clearCache() {
+  cacheWrites = cacheWrites.then(() =>
+    browser.storage.local.remove(CACHE_STORAGE_KEY)
+  );
+
+  return cacheWrites;
+}
+
+// --------------------------------------------------
+// CACHED REQUESTS
+// --------------------------------------------------
+
+async function cachedRequest(
+  kind,
+  path,
+  job,
+  profile,
+  refresh = false
+) {
+  const key = await cacheKey(kind, job, profile);
+
+  if (!refresh) {
+    const cached = await readCache(key);
+
+    if (cached) {
+      console.log(`[Axios] Cache hit: ${kind}`);
+      return cached;
+    }
+  }
+
+  if (inFlight.has(key)) {
+    console.log(`[Axios] Reusing pending request: ${kind}`);
+    return inFlight.get(key);
+  }
+
+  const request = axiosRequest(path, {
+    job,
+    profile
+  })
+    .then(async result => {
+      await writeCache(key, result);
+      return result;
+    })
+    .finally(() => {
+      inFlight.delete(key);
+    });
+
+  inFlight.set(key, request);
+
+  return request;
+}
+
+// --------------------------------------------------
+// REACT UI MESSAGE HANDLERS
+// --------------------------------------------------
+
+browser.runtime.onMessage.addListener(async message => {
   switch (message.type) {
     case "SAVE_PROFILE": {
-      const profile = await axiosRequest("/profile", message.profile);
+      const profile = await axiosRequest(
+        "/profile",
+        message.profile
+      );
+
       await browser.storage.local.set({ profile });
+      await clearCache();
+
       return profile;
     }
 
     case "GET_PROFILE": {
-      const { profile } = await browser.storage.local.get("profile");
+      const { profile } = await browser.storage.local.get(
+        "profile"
+      );
+
       return profile ?? null;
     }
 
     case "RATE_JOB":
     case "GUIDE_JOB": {
-      const { profile } = await browser.storage.local.get("profile");
-
-      if (!profile) {
-        throw new Error("Create an accessibility profile first");
+      if (!message.job?.url || !message.job?.description) {
+        throw new Error("No valid job listing found");
       }
 
-      const path =
-        message.type === "RATE_JOB" ? "/rate" : "/guide";
+      const { profile } = await browser.storage.local.get(
+        "profile"
+      );
 
-      return axiosRequest(path, {
-        job: message.job,
-        profile
-      });
+      if (!profile) {
+        throw new Error(
+          "Create an accessibility profile first"
+        );
+      }
+
+      const isRating = message.type === "RATE_JOB";
+
+      const kind = isRating ? "rate" : "guide";
+      const path = isRating ? "/rate" : "/guide";
+
+      return cachedRequest(
+        kind,
+        path,
+        message.job,
+        profile,
+        message.refresh === true
+      );
     }
 
     default:
       return undefined;
   }
 });
-
-// --------------------------------------------------
-// TEMPORARY TEST: MOCK PROFILE + REAL EJOB LISTING
-// --------------------------------------------------
-
-const mockUser = {
-  disabilities: "Chronic lower back pain and mild hearing loss",
-  difficulties:
-    "Cannot stand for more than one hour and cannot lift heavy objects",
-  requirements:
-    "Predominantly seated work, ability to change positions periodically",
-  extras:
-    "Prefer a quiet workplace and flexible working hours for physiotherapy appointments"
-};
-
-async function testJobRating() {
-  try {
-    console.log("[Axios] Starting rating test...");
-
-    // 1. Find an open eJobs tab
-    const tabs = await browser.tabs.query({
-      url: "https://www.ejobs.ro/*"
-    });
-
-    if (tabs.length === 0) {
-      throw new Error("No eJobs tab found");
-    }
-
-    const tab = tabs.find(t => t.active) ?? tabs[0];
-
-    // 2. Extract REAL job data
-    const job = await browser.tabs.sendMessage(tab.id, {
-      type: "GET_JOB_DATA"
-    });
-
-    if (!job?.description) {
-      throw new Error("Failed to extract job description");
-    }
-
-    console.log("[Axios] Extracted job:", job);
-
-    // 3. Generate mock accessibility profile
-    console.log("[Axios] Generating accessibility profile...");
-
-    const profile = await axiosRequest("/profile", mockUser);
-
-    await browser.storage.local.set({ profile });
-
-    console.log("[Axios] Processed profile:", profile);
-
-    // 4. Rate REAL job using mock profile
-    console.log("[Axios] Requesting AI rating...");
-
-    console.time("[Axios] Rating duration");
-
-    const result = await axiosRequest("/rate", {
-      job,
-      profile
-    });
-
-    console.timeEnd("[Axios] Rating duration");
-
-    // 5. Log results
-    console.log("==================================");
-    console.log("[Axios] JOB RATING RESULT");
-    console.log("==================================");
-
-    console.log("Job:", job.title);
-    console.log("Company:", job.company);
-    console.log("Rating:", result.rating, "/ 10");
-    console.log("Explanation:", result.rating_explanation);
-
-    console.log("Compatible needs:", result.compatible_with_needs);
-    console.log("Conflicting needs:", result.conflicts_with_needs);
-    console.log("Unknown needs:", result.unknown_for_needs);
-
-    console.log("Work conditions:", result.work_conditions);
-    console.log("Vague description:", result.vague);
-    console.log("Vague details:", result.vague_details);
-
-    console.log("Full result:", result);
-
-  } catch (error) {
-    console.error("[Axios] Rating test failed:", error);
-  }
-}
-
 

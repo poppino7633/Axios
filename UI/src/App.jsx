@@ -3,8 +3,40 @@ import OnboardingQuiz from './OnboardingQuiz';
 import { MOCK_RATE_RESULT, MOCK_GUIDE_RESULT } from './mockData';
 import './App.css';
 
+// Cere datele jobului de la content script. Dacă tab-ul era deschis înainte ca extensia să fie
+// (re)încărcată, content script-ul nu rulează acolo ("Receiving end does not exist"), așa că
+// îl injectăm acum (permisiunile activeTab + scripting) și reîncercăm.
+async function getJobFromTab(tabId) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, { type: "GET_JOB_DATA" });
+  } catch {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+    return chrome.tabs.sendMessage(tabId, { type: "GET_JOB_DATA" });
+  }
+}
+
+// Toggle care se păstrează între deschiderile popup-ului
+function usePersistentToggle(key) {
+  const [value, setValue] = useState(() => {
+    try { return localStorage.getItem(key) === 'true'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(key, String(value)); } catch { /* storage indisponibil */ }
+  }, [key, value]);
+  return [value, setValue];
+}
+
+// Clasa de culoare pentru bannerul de scor (definită în App.css)
+function ratingClass(rating) {
+  if (!rating) return 'UNRATED';
+  if (rating >= 7) return 'COMPATIBLE';
+  if (rating >= 4) return 'PARTIAL_MATCH';
+  return 'INCOMPATIBLE';
+}
+
 export default function App() {
-  const [highContrast, setHighContrast] = useState(false);
+  const [highContrast, setHighContrast] = usePersistentToggle('axios.highContrast');
+  const [dyslexiaFont, setDyslexiaFont] = usePersistentToggle('axios.dyslexiaFont');
   const [activeTab, setActiveTab] = useState('preferences'); // 'preferences', 'analysis', 'guide'
 
   const [savedProfile, setSavedProfile] = useState(null);
@@ -28,10 +60,10 @@ export default function App() {
             setActiveTab('analysis'); // Mergem direct pe Analiză dacă profilul există
           }
 
-          // B. Obține datele jobului din pagina eJobs activă via Content Script
+          // B. Obține datele jobului din pagina activă via Content Script
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
           if (tab?.id) {
-            const job = await chrome.tabs.sendMessage(tab.id, { type: "GET_JOB_DATA" });
+            const job = await getJobFromTab(tab.id);
             setJobData(job);
             
             // Dacă avem profil, rulăm automat analiza jobului
@@ -40,7 +72,7 @@ export default function App() {
             }
           }
         } catch (err) {
-          console.log("Extensia nu este pe o pagină eJobs sau rulează în modul Dev:", err);
+          console.log("Pagina activă nu poate fi citită sau extensia rulează în modul Dev:", err);
         }
       } else {
         // Fallback pentru modul dev pe localhost:5173
@@ -113,7 +145,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app-wrapper ${highContrast ? 'high-contrast' : ''}`}>
+    <div className={`app-wrapper ${highContrast ? 'high-contrast' : ''} ${dyslexiaFont ? 'dyslexia-font' : ''}`}>
       <header className="app-header">
         <div className="logo-container">
           <div className="logo-icon">⚡</div>
@@ -122,13 +154,24 @@ export default function App() {
             <span className="subtitle-tag">Accessibility Assistant</span>
           </div>
         </div>
-        <button 
-          onClick={() => setHighContrast(!highContrast)} 
-          className="contrast-toggle-btn"
-          aria-label="Comută modul High Contrast"
-        >
-          {highContrast ? '☀️ Normal' : '👁️ High Contrast'}
-        </button>
+        <div className="header-toggles">
+          <button
+            onClick={() => setDyslexiaFont(!dyslexiaFont)}
+            className="contrast-toggle-btn"
+            aria-pressed={dyslexiaFont}
+            aria-label="Comută fontul pentru dislexie"
+          >
+            {dyslexiaFont ? '🔤 Font Standard' : '🔤 Font Dislexie'}
+          </button>
+          <button
+            onClick={() => setHighContrast(!highContrast)}
+            className="contrast-toggle-btn"
+            aria-pressed={highContrast}
+            aria-label="Comută modul High Contrast"
+          >
+            {highContrast ? '☀️ Normal' : '👁️ High Contrast'}
+          </button>
+        </div>
       </header>
 
       {/* Navigare Tab-uri */}
@@ -193,7 +236,7 @@ export default function App() {
                 {!savedProfile ? (
                   <div className="section-card info-card">
                     <h3>⚠️ Niciun profil configurat</h3>
-                    <p>Completează mai întâi profilul tău de accesibilitate pentru a putea analiza joburile de pe eJobs.</p>
+                    <p>Completează mai întâi profilul tău de accesibilitate pentru a putea analiza anunțurile de job.</p>
                     <button className="primary-btn" onClick={() => setActiveTab('preferences')}>
                       Creează Profil
                     </button>
@@ -201,7 +244,7 @@ export default function App() {
                 ) : analysis ? (
                   <>
                     {/* Score Banner */}
-                    <div className={`match-banner rating-${analysis.rating || 'none'}`}>
+                    <div className={`match-banner ${ratingClass(analysis.rating)}`}>
                       <div className="match-info">
                         <span className="match-title">Scor Potrivire Accesibilitate</span>
                         <span className="match-status">
