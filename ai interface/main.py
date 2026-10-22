@@ -4,20 +4,20 @@ Three operations, each JSON in -> JSON out, backed by whichever LLM provider is 
 (see providers.py; currently Google AI Studio / Gemini):
 
   1. profile  - takes the user's description of their disabilities / difficulties / requirements
-                (plus a free-text "extras" box), trims it to a concise list of needs and saves it
-                locally. The saved profile is used as context for the other two operations.
-  2. rate     - takes a job listing (shape produced by extension/content.js: {"url", "title", "description", ...}) and
-                returns a 1-10 suitability rating, the work conditions, and a flag if the
-                description is too vague to judge.
-  3. guide    - takes a job listing and returns an application guide: process, attire,
-                unspoken rules and tips, tailored to the user's needs.
+                (plus a free-text "extras" box) and trims it to a concise list of needs. Nothing is
+                stored here: the extension keeps the profile and sends it with every job request.
+  2. rate     - takes a job listing (shape produced by extension/content.js: {"url", "title", "description", ...})
+                plus the profile, and returns a 1-10 suitability rating, the work conditions, and a
+                flag if the description is too vague to judge.
+  3. guide    - takes a job listing plus the profile and returns an application guide: process,
+                attire, unspoken rules and tips, tailored to the user's needs.
 
 Usage:
     configure the provider and key in ai interface/.env (see .env.example)
-    python main.py profile user.json
-    python main.py rate job.json [-o out.json]
-    python main.py guide job.json [-o out.json]
-    cat job.json | python main.py rate
+    python main.py profile user.json -o profile.json
+    python main.py rate job.json --profile profile.json [-o out.json]
+    python main.py guide job.json --profile profile.json [-o out.json]
+    cat job.json | python main.py rate --profile profile.json
 """
 
 import argparse
@@ -25,12 +25,9 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
 
 import providers  # also loads ai interface/.env
 
-
-PROFILE_PATH = Path(os.environ.get("AXIOS_PROFILE", Path(__file__).with_name("profile.json")))
 
 # Descriptions shorter than this are flagged as vague regardless of what the model says.
 MIN_DESCRIPTION_CHARS = 300
@@ -131,19 +128,14 @@ def ask(system_prompt, user_content, model=None):
 
 # --- 1. profile -------------------------------------------------------------
 
-def build_profile(user_input, model=None, path=PROFILE_PATH):
-    """Condense the user's free-form input into a list of needs and save it to `path`."""
-    profile = ask(PROFILE_PROMPT, user_input, model=model)
-    if "error" not in profile:
-        Path(path).write_text(json.dumps(profile, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return profile
+def build_profile(user_input, model=None):
+    """Condense the user's free-form input into a list of needs. The caller stores the result."""
+    return ask(PROFILE_PROMPT, user_input, model=model)
 
 
-def load_profile(path=PROFILE_PATH):
-    path = Path(path)
-    if not path.exists():
-        raise RuntimeError(f"no saved profile at {path}; run the 'profile' command first")
-    return json.loads(path.read_text(encoding="utf-8"))
+def check_profile(profile):
+    if not isinstance(profile, dict) or not isinstance(profile.get("needs"), list):
+        raise RuntimeError('profile must be the object returned by /profile, e.g. {"needs": [...], "preferences": [...], "language": "..."}')
 
 
 def profile_prefix(profile):
@@ -154,9 +146,9 @@ def profile_prefix(profile):
 
 # --- 2. rate ----------------------------------------------------------------
 
-def rate_job(job, profile=None, model=None):
+def rate_job(job, profile, model=None):
     """Rate a job listing against the user's needs and describe its work conditions."""
-    profile = profile or load_profile()
+    check_profile(profile)
     prompt = RATE_PROMPT.format(profile=profile_prefix(profile), language=profile.get("language", "Romanian"))
     result = ask(prompt, job, model=model)
     if "error" in result:
@@ -181,9 +173,9 @@ def rate_job(job, profile=None, model=None):
 
 # --- 3. guide ---------------------------------------------------------------
 
-def application_guide(job, profile=None, model=None):
+def application_guide(job, profile, model=None):
     """Produce an application guide for a job listing, tailored to the user's needs."""
-    profile = profile or load_profile()
+    check_profile(profile)
     prompt = GUIDE_PROMPT.format(profile=profile_prefix(profile), language=profile.get("language", "Romanian"))
     result = ask(prompt, job, model=model)
     result["source_url"] = job.get("url")
@@ -204,8 +196,11 @@ def main():
     parser.add_argument("command", choices=COMMANDS, help="operation to run")
     parser.add_argument("input", nargs="?", help="input JSON file (default: stdin)")
     parser.add_argument("-o", "--output", help="output JSON file (default: stdout)")
+    parser.add_argument("-p", "--profile", help="profile JSON file (output of the 'profile' command); required for rate/guide")
     parser.add_argument("-m", "--model", help="override AI_MODEL from .env for this run")
     args = parser.parse_args()
+    if args.command != "profile" and not args.profile:
+        parser.error(f"'{args.command}' needs --profile")
 
     if args.input:
         with open(args.input, encoding="utf-8") as f:
@@ -213,7 +208,12 @@ def main():
     else:
         data = json.load(sys.stdin)
 
-    result = COMMANDS[args.command](data, model=args.model)
+    if args.command == "profile":
+        result = build_profile(data, model=args.model)
+    else:
+        with open(args.profile, encoding="utf-8") as f:
+            profile = json.load(f)
+        result = COMMANDS[args.command](data, profile, model=args.model)
     out = json.dumps(result, ensure_ascii=False, indent=2)
 
     if args.output:
