@@ -1,10 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import OnboardingQuiz from './OnboardingQuiz';
 import { MOCK_RATE_RESULT, MOCK_GUIDE_RESULT } from './mockData';
+import '@fontsource/opendyslexic/400.css';
+import '@fontsource/opendyslexic/700.css';
 import './App.css';
 
+// Toggle care se păstrează între deschiderile popup-ului
+function usePersistentToggle(key) {
+  const [value, setValue] = useState(() => {
+    try { return localStorage.getItem(key) === 'true'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(key, String(value)); } catch { /* storage indisponibil */ }
+  }, [key, value]);
+  return [value, setValue];
+}
+
+// Clasa de culoare pentru bannerul de scor (definită în App.css)
+function ratingClass(rating) {
+  if (!rating) return 'UNRATED';
+  if (rating >= 7) return 'COMPATIBLE';
+  if (rating >= 4) return 'PARTIAL_MATCH';
+  return 'INCOMPATIBLE';
+}
+
 export default function App() {
-  const [highContrast, setHighContrast] = useState(false);
+  const [highContrast, setHighContrast] = usePersistentToggle('axios.highContrast');
+  const [dyslexiaFont, setDyslexiaFont] = usePersistentToggle('axios.dyslexiaFont');
   const [activeTab, setActiveTab] = useState('preferences'); // 'preferences', 'analysis', 'guide'
 
   const [savedProfile, setSavedProfile] = useState(null);
@@ -113,7 +135,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app-wrapper ${highContrast ? 'high-contrast' : ''}`}>
+    <div className={`app-wrapper ${highContrast ? 'high-contrast' : ''} ${dyslexiaFont ? 'dyslexia-font' : ''}`}>
       <header className="app-header">
         <div className="logo-container">
           <div className="logo-icon">⚡</div>
@@ -122,13 +144,24 @@ export default function App() {
             <span className="subtitle-tag">Accessibility Assistant</span>
           </div>
         </div>
-        <button 
-          onClick={() => setHighContrast(!highContrast)} 
-          className="contrast-toggle-btn"
-          aria-label="Comută modul High Contrast"
-        >
-          {highContrast ? '☀️ Normal' : '👁️ High Contrast'}
-        </button>
+        <div className="header-toggles">
+          <button
+            onClick={() => setDyslexiaFont(!dyslexiaFont)}
+            className="contrast-toggle-btn"
+            aria-pressed={dyslexiaFont}
+            aria-label="Comută fontul pentru dislexie"
+          >
+            {dyslexiaFont ? '🔤 Font Standard' : '🔤 Font Dislexie'}
+          </button>
+          <button
+            onClick={() => setHighContrast(!highContrast)}
+            className="contrast-toggle-btn"
+            aria-pressed={highContrast}
+            aria-label="Comută modul High Contrast"
+          >
+            {highContrast ? '☀️ Normal' : '👁️ High Contrast'}
+          </button>
+        </div>
       </header>
 
       {/* Navigare Tab-uri */}
@@ -201,7 +234,7 @@ export default function App() {
                 ) : analysis ? (
                   <>
                     {/* Score Banner */}
-                    <div className={`match-banner rating-${analysis.rating || 'none'}`}>
+                    <div className={`match-banner ${ratingClass(analysis.rating)}`}>
                       <div className="match-info">
                         <span className="match-title">Scor Potrivire Accesibilitate</span>
                         <span className="match-status">

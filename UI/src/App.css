@@ -10,34 +10,59 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --radius: 12px;
+  --content-width: 880px; /* lățimea maximă a coloanei de conținut pe ecrane late */
 }
 
 body {
   margin: 0;
   padding: 0;
+  min-width: 380px; /* lățimea minimă a popup-ului (lasă loc și pentru scrollbar) */
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background-color: var(--bg-main);
   color: var(--text-main);
-  display: flex;
-  justify-content: center;
 }
 
+/* Fundalul umple toată fereastra; conținutul stă într-o coloană centrată */
 .app-wrapper {
-  width: 400px;
-  min-height: 580px;
+  width: 100%;
+  min-height: 100vh;
   background: var(--bg-main);
   padding: 16px;
-  box-sizing: border-box;
+}
+
+.app-header,
+.tabs-nav,
+.content-area {
+  width: 100%;
+  max-width: var(--content-width);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Font pentru dislexie: litere cu bază îngroșată + rânduri mai aerisite */
+.app-wrapper.dyslexia-font {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', sans-serif;
+  letter-spacing: 0;  /* OpenDyslexic e deja un font lat */
+  word-spacing: 0.08em;
+  line-height: 1.6;
 }
 
 /* Header UI */
 .app-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.header-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .logo-container {
@@ -74,6 +99,7 @@ h1 {
 
 .contrast-toggle-btn {
   background: #f1f5f9;
+  color: var(--text-main);
   border: 1px solid var(--border-color);
   padding: 6px 10px;
   border-radius: 20px;
@@ -85,6 +111,13 @@ h1 {
 
 .contrast-toggle-btn:hover {
   background: #e2e8f0;
+}
+
+/* Toggle activ */
+.contrast-toggle-btn[aria-pressed="true"] {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 /* Tabs Navigation */
@@ -153,6 +186,7 @@ h1 {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: var(--bg-card);
+  color: var(--text-main);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -184,7 +218,19 @@ h1 {
   transition: all 0.15s;
 }
 
-.custom-checkbox input { display: none; }
+/* Ascuns vizual, dar rămâne accesibil din tastatură și pentru screen readere */
+.custom-checkbox input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.custom-checkbox:has(input:focus-visible) {
+  outline: 3px solid #6366f1;
+  outline-offset: 2px;
+}
 
 .checkbox-indicator {
   width: 18px;
@@ -296,8 +342,10 @@ h1 {
 
 .finding-criterion { font-weight: 700; font-size: 0.85rem; }
 .finding-status { font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
-.finding-status.confirmed { background: #dcfce7; color: #15803d; }
-.finding-status.unknown { background: #fef3c7; color: #b45309; }
+.finding-status.confirmed,
+.finding-status.stated { background: #dcfce7; color: #15803d; }
+.finding-status.unknown,
+.finding-status.typical { background: #fef3c7; color: #b45309; }
 
 .finding-explanation { font-size: 0.8rem; margin: 4px 0; }
 .finding-evidence {
@@ -317,36 +365,145 @@ h1 {
   margin-bottom: 8px;
 }
 
+/* Componente folosite în JSX care nu aveau stil */
+.match-banner.UNRATED { background: linear-gradient(135deg, #64748b, #475569); }
+
+.form-header { margin-bottom: 12px; }
+.form-header h2 { margin: 0 0 4px 0; font-size: 1.05rem; }
+.form-header p { margin: 0; font-size: 0.8rem; color: var(--text-muted); }
+
+.primary-btn {
+  padding: 10px 14px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.primary-btn:hover { background: var(--primary-hover); }
+.guide-trigger-btn { width: 100%; margin-top: 4px; }
+.info-card .primary-btn { margin-top: 10px; }
+
+.error-banner {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.warning-card { background: #fffbeb; border-color: #fcd34d; }
+.active-profile-summary { border-color: #86efac; }
+.active-profile-summary p { margin: 4px 0; font-size: 0.85rem; }
+
+.loading-card { text-align: center; padding: 28px 14px; }
+.loading-card p { font-size: 0.85rem; color: var(--text-muted); }
+.spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 12px;
+  border: 4px solid var(--primary-light);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.steps-list { margin: 0; padding-left: 20px; }
+.steps-list li { font-size: 0.85rem; margin-bottom: 6px; }
+
 /* Accessibility Focus States */
 button:focus-visible, input:focus-visible, textarea:focus-visible {
   outline: 3px solid #6366f1 !important;
   outline-offset: 2px;
 }
 
-/* HIGH CONTRAST MODE (WCAG AAA) */
+/* HIGH CONTRAST MODE (WCAG AAA): alb pe negru.
+   Elementele selectate (tab activ, opțiune aleasă, checkbox bifat) sunt inversate: negru pe alb. */
 .app-wrapper.high-contrast {
   background-color: #000000 !important;
-  color: #ffff00 !important;
+  color: #ffffff !important;
+}
+
+.app-wrapper.high-contrast .app-header {
+  border-bottom-color: #ffffff;
 }
 
 .app-wrapper.high-contrast .section-card,
 .app-wrapper.high-contrast .radio-tile,
 .app-wrapper.high-contrast .custom-checkbox,
 .app-wrapper.high-contrast .finding-card,
-.app-wrapper.high-contrast .styled-textarea {
-  background-color: #000000 !important;
-  color: #ffff00 !important;
-  border: 2px solid #ffff00 !important;
+.app-wrapper.high-contrast .styled-textarea,
+.app-wrapper.high-contrast .tabs-nav,
+.app-wrapper.high-contrast .match-banner,
+.app-wrapper.high-contrast .error-banner {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+}
+
+/* titlurile cu culoare inline (verde/roșu) devin albe */
+.app-wrapper.high-contrast h1,
+.app-wrapper.high-contrast h2,
+.app-wrapper.high-contrast h3,
+.app-wrapper.high-contrast p,
+.app-wrapper.high-contrast .subtitle-tag,
+.app-wrapper.high-contrast .section-subtitle,
+.app-wrapper.high-contrast .finding-status {
+  color: #ffffff !important;
+}
+
+.app-wrapper.high-contrast .finding-status {
+  background: #000000 !important;
+  border: 1px solid #ffffff;
 }
 
 .app-wrapper.high-contrast button {
-  background-color: #ffff00 !important;
-  color: #000000 !important;
+  background-color: #000000 !important;
+  color: #ffffff !important;
   border: 2px solid #ffffff !important;
   font-weight: 900 !important;
 }
 
+.app-wrapper.high-contrast .tab-btn.active,
+.app-wrapper.high-contrast .radio-tile.active,
+.app-wrapper.high-contrast .custom-checkbox.checked,
+.app-wrapper.high-contrast .contrast-toggle-btn[aria-pressed="true"],
+.app-wrapper.high-contrast .primary-btn,
+.app-wrapper.high-contrast .save-btn {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+.app-wrapper.high-contrast .custom-checkbox.checked .checkbox-text {
+  color: #000000 !important;
+}
+
+.app-wrapper.high-contrast .checkbox-indicator {
+  border-color: currentColor !important;
+}
+
+.app-wrapper.high-contrast .custom-checkbox.checked .checkbox-indicator {
+  background: #000000 !important;
+  border-color: #000000 !important;
+}
+
+.app-wrapper.high-contrast .spinner {
+  border-color: #333333;
+  border-top-color: #ffffff;
+}
+
 .app-wrapper.high-contrast .finding-evidence {
   color: #ffffff !important;
-  border-left-color: #ffff00 !important;
+  border-left-color: #ffffff !important;
+}
+
+.app-wrapper.high-contrast button:focus-visible,
+.app-wrapper.high-contrast .custom-checkbox:has(input:focus-visible) {
+  outline-color: #ffffff !important;
 }
