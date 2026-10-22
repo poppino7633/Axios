@@ -50,7 +50,7 @@
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "codeWithMe.voiceChat.enabledByDefault": "false",
-    "git-widget-placeholder": "ai-interface",
+    "git-widget-placeholder": "#11 on ai-interface",
     "git.auto.fetch.suggestion.counter": "1",
     "last_opened_file_path": "/home/forcedev/Documents/new work/Axios",
     "node.js.detected.package.jshint": "true",
@@ -109,7 +109,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/ai interface/main.py</url>
-          <line>198</line>
+          <line>219</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>

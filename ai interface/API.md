@@ -11,7 +11,7 @@ The AI server runs on one laptop. The extension calls it over the wifi network. 
 | **Content type** | Send `Content-Type: application/json` with every POST. |
 | **CORS** | Requests from any origin are allowed, and the `X-Axios-Token` header is allowed in preflight. |
 | **Manifest** | Add `"http://10.200.20.64:8765/*"` to `host_permissions` in `extension/manifest.json`. In Firefox the user may have to grant it under *about:addons → Axios → Permissions*. |
-| **Speed** | Typical times: `/profile` ~2 s, `/rate` ~3–6 s, `/guide` ~20 s. They can take longer when the AI provider is busy. Show a loading state and don't set short timeouts. |
+| **Speed** | Typical times: `/profile` ~3 s, `/rate` ~3–6 s, `/guide` ~7 s. They can take longer when the AI provider is busy. Show a loading state and don't set short timeouts. |
 
 Quick connectivity check from any laptop on the wifi:
 
@@ -63,25 +63,19 @@ Turns the user's free-form description of their disabilities, difficulties and r
 **Response `200`**
 ```json
 {
-  "needs": [
-    "predominantly seated work",
-    "no prolonged standing (maximum 1 hour)",
-    "ability to change positions periodically",
-    "no heavy lifting"
-  ],
-  "preferences": [
-    "quiet work environment",
-    "flexible working hours for morning physiotherapy appointments"
-  ],
+  "needs": ["sit most of the day", "can change position", "no heavy lifting", "max one hour standing", "quiet environment"],
+  "preferences": ["flexible morning hours", "computer work", "proficient in Excel"],
   "language": "English"
 }
 ```
 
 | Field | Type | Meaning |
 |---|---|---|
-| `needs` | string[] | Hard requirements and limitations |
-| `preferences` | string[] | Nice-to-haves |
-| `language` | string | Language the user wrote in. `/rate` and `/guide` answer in this language. |
+| `needs` | string[] | Hard requirements and limitations, each a short workplace condition (2–6 words) |
+| `preferences` | string[] | Nice-to-haves and skills |
+| `language` | string | English name of the language the user wrote in (e.g. `"Romanian"`). `/rate` and `/guide` answer in this language. |
+
+The profile is kept deliberately short because it is sent with every `/rate` and `/guide` call.
 
 ---
 
@@ -144,34 +138,63 @@ Rates how well a job fits the user's profile, describes the work conditions, and
 
 ## `POST /guide`
 
-Builds an application guide for the job, tailored to the user's profile.
+Builds a short, step-by-step application guide for the job, tailored to the user's needs. **The response always has the same keys.** Sections the person doesn't need are `null`: someone with reduced mobility gets e.g. `travel_and_access`, a neurodivergent person gets e.g. `etiquette`, `attire` and `sensory_comfort`, and everything else is `null`.
 
 **Request body:** the same `{ "job": {...}, "profile": {...} }` as `/rate`.
 
-**Response `200`**
+**Response `200`** (real example for an autistic user, shortened)
 ```json
 {
-  "application_steps": ["Update and tailor your CV ...", "Submit your application through eJobs ...", "..."],
-  "documents_to_prepare": ["CV in English (PDF)", "GitHub / portfolio link"],
-  "attire": "Smart casual (neat shirt or blouse, comfortable trousers or dark jeans) ...",
-  "unspoken_rules": ["English fluency is taken seriously in Bucharest tech companies ..."],
-  "interview_tips": ["Prepare explanations of REST principles ..."],
-  "accommodation_advice": ["Wait until the final HR stage or the offer before requesting schedule adjustments ..."],
-  "questions_to_ask_employer": ["How flexible are daily working hours around core hours?"],
+  "application_steps": [
+    "Tailor your CV to the Python, basic SQL and English requirements listed.",
+    "Apply through the eJobs listing and save a copy of your application.",
+    "Follow up by email after one week if you have not heard back."
+  ],
+  "travel_and_access": null,
+  "interview_format": [
+    "Ask for interview questions or topics in writing in advance.",
+    "Ask whether any technical task can be done in writing instead of live coding."
+  ],
+  "sensory_comfort": ["Request a quieter room or a seat away from busy areas, if possible.", "..."],
+  "attire": ["Wear smart casual clothes, such as a clean shirt or blouse with dark trousers.", "..."],
+  "etiquette": ["Arrive about ten minutes early and greet the interviewer with your name and a handshake.", "..."],
+  "disclosure": null,
+  "schedule_and_health": null,
+  "questions_to_ask_employer": [
+    "Can interview questions or the technical task be shared in writing beforehand?"
+  ],
   "source_url": "https://www.ejobs.ro/user/locuri-de-munca/..."
 }
 ```
 
-| Field | Type |
-|---|---|
-| `application_steps` | string[], in order |
-| `documents_to_prepare` | string[] |
-| `attire` | string |
-| `unspoken_rules` | string[] |
-| `interview_tips` | string[] |
-| `accommodation_advice` | string[] |
-| `questions_to_ask_employer` | string[] |
-| `source_url` | string |
+| Field | Type | Meaning |
+|---|---|---|
+| `application_steps` | string[] | Always present. 4–6 steps in order, from preparing the CV to following up. |
+| `travel_and_access` | string[] or `null` | Getting to the interview, step-free venue, accessible room |
+| `interview_format` | string[] or `null` | Communication format, written or remote options, assistive tools |
+| `sensory_comfort` | string[] or `null` | Noise, light, breaks around the interview |
+| `attire` | string[] or `null` | What to wear |
+| `etiquette` | string[] or `null` | What to expect, unspoken rules, small talk |
+| `disclosure` | string[] or `null` | Whether, when and how to mention needs and ask for adjustments |
+| `schedule_and_health` | string[] or `null` | Timing, breaks, medical appointments, energy |
+| `questions_to_ask_employer` | string[] | Always present, up to 3, about this person's needs |
+| `source_url` | string | Copied from `job.url` |
+
+The sections are listed in display order. Usually 2–4 are filled. Each filled section has 2–4 steps in order, so render it as a heading with a numbered list and skip the `null` ones:
+
+```js
+const SECTION_TITLES = {
+  travel_and_access: "Getting there", interview_format: "Interview format", sensory_comfort: "Sensory comfort",
+  attire: "What to wear", etiquette: "What to expect", disclosure: "Talking about your needs",
+  schedule_and_health: "Schedule & health",
+};
+for (const [key, title] of Object.entries(SECTION_TITLES)) {
+  if (guide[key] === null) continue;   // not relevant for this person
+  // render `title` + numbered list of guide[key]
+}
+```
+
+Every step is one short instruction (about 15 words or fewer). Legal rights are only described in general terms, with no law or article numbers.
 
 ---
 
