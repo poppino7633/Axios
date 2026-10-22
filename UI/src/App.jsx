@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import OnboardingQuiz from './OnboardingQuiz';
 import { MOCK_RATE_RESULT, MOCK_GUIDE_RESULT } from './mockData';
-import '@fontsource/opendyslexic/400.css';
-import '@fontsource/opendyslexic/700.css';
 import './App.css';
 
 // Toggle care se păstrează între deschiderile popup-ului
