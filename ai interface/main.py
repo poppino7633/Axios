@@ -1,7 +1,7 @@
 """Axios AI interface.
 
 Three operations, each JSON in -> JSON out, backed by whichever LLM provider is set in .env
-(see providers.py; currently Google AI Studio / Gemini):
+(see providers.py):
 
   1. profile  - takes the user's description of their disabilities / difficulties / requirements
                 (plus a free-text "extras" box) and trims it to a concise list of needs. Nothing is
@@ -9,8 +9,11 @@ Three operations, each JSON in -> JSON out, backed by whichever LLM provider is 
   2. rate     - takes a job listing (shape produced by extension/content.js: {"url", "title", "description", ...})
                 plus the profile, and returns a 1-10 suitability rating, the work conditions, and a
                 flag if the description is too vague to judge.
-  3. guide    - takes a job listing plus the profile and returns an application guide: process,
-                attire, unspoken rules and tips, tailored to the user's needs.
+  3. guide    - takes a job listing plus the profile and returns a short step-by-step application
+                guide; only the sections this person needs are filled, the rest are null.
+
+Every reply is checked against a JSON schema: Claude enforces it server-side, and the shape checks
+below repair anything another provider gets wrong, so the extension always gets the documented shape.
 
 Usage:
     configure the provider and key in ai interface/.env (see .env.example)
@@ -56,6 +59,8 @@ Rules:
   construction = heavy physical labour, standing; call centre = long phone calls), and judge the needs
   against them too. Everything else must come from the posting ("stated"); never invent salary,
   schedule, location or benefits.
+- work_conditions are concrete facts about the work (tasks, hours, place, physical demands), never
+  buzzwords: "salariu motivant", "loc de muncă plăcut", "echipă dinamică" go only in vague_details.
 - Vague phrases instead of facts ("salariu motivant", "loc de muncă plăcut", ...) or missing basics
   (pay, schedule, location, physical demands) mean "vague": true.
 - Rating 1-10 (10 = fits every need). Missing information keeps it moderate, not high or low.
@@ -111,6 +116,43 @@ Respond with ONLY this JSON (each section: 2-4 steps, or null):
 }}"""
 
 
+# JSON schemas for the replies (enforced by providers that support it, e.g. Claude).
+STRINGS = {"type": "array", "items": {"type": "string"}}
+STRINGS_OR_NULL = {"anyOf": [STRINGS, {"type": "null"}]}
+
+
+def object_schema(properties):
+    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+
+
+PROFILE_SCHEMA = object_schema({"needs": STRINGS, "preferences": STRINGS, "language": {"type": "string"}})
+
+RATE_SCHEMA = object_schema({
+    "rating": {"type": "integer", "enum": list(range(1, 11))},
+    "rating_explanation": {"type": "string"},
+    "work_conditions": {"type": "array", "items": object_schema({
+        "condition": {"type": "string"},
+        "source": {"type": "string", "enum": ["stated", "typical"]},
+    })},
+    "conflicts_with_needs": STRINGS,
+    "vague": {"type": "boolean"},
+    "vague_details": STRINGS,
+})
+
+GUIDE_SCHEMA = object_schema({
+    "application_steps": STRINGS,
+    **{section: STRINGS_OR_NULL for section in GUIDE_SECTIONS},
+    "questions_to_ask_employer": STRINGS,
+})
+
+
+def string_list(value):
+    """A list of non-empty strings, whatever the model actually sent."""
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if isinstance(item, (str, int, float)) and str(item).strip()]
+
+
 def extract_json(text):
     """Pull the first JSON object out of the model's reply (models sometimes wrap it in ``` fences)."""
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
@@ -123,20 +165,32 @@ def extract_json(text):
         raise
 
 
-def ask(system_prompt, user_content, model=None, task=None):
-    """Send one request and return the parsed JSON reply, or an error object if parsing fails."""
-    reply = providers.complete(system_prompt, json.dumps(user_content, ensure_ascii=False), model=model, task=task)
+def ask(system_prompt, user_content, model=None, task=None, schema=None):
+    """Send one request and return the parsed JSON object, or an error object if there isn't one."""
+    reply = providers.complete(system_prompt, json.dumps(user_content, ensure_ascii=False),
+                               model=model, task=task, schema=schema)
     try:
-        return extract_json(reply)
+        result = extract_json(reply)
     except json.JSONDecodeError:
         return {"error": "model did not return valid JSON", "raw": reply}
+    if not isinstance(result, dict):
+        return {"error": "model did not return a JSON object", "raw": reply}
+    return result
 
 
 # --- 1. profile -------------------------------------------------------------
 
 def build_profile(user_input, model=None):
     """Condense the user's free-form input into a list of needs. The caller stores the result."""
-    return ask(PROFILE_PROMPT, user_input, model=model, task="profile")
+    result = ask(PROFILE_PROMPT, user_input, model=model, task="profile", schema=PROFILE_SCHEMA)
+    if "error" in result:
+        return result
+    language = result.get("language")
+    return {
+        "needs": string_list(result.get("needs")),
+        "preferences": string_list(result.get("preferences")),
+        "language": language.strip() if isinstance(language, str) and language.strip() else "Romanian",
+    }
 
 
 def check_profile(profile):
@@ -156,15 +210,27 @@ def rate_job(job, profile, model=None):
     """Rate a job listing against the user's needs and describe its work conditions."""
     check_profile(profile)
     prompt = RATE_PROMPT.format(profile=profile_prefix(profile), language=profile.get("language", "Romanian"))
-    result = ask(prompt, job, model=model, task="rate")
+    result = ask(prompt, job, model=model, task="rate", schema=RATE_SCHEMA)
     if "error" in result:
         result["source_url"] = job.get("url")
         return result
 
     try:
-        result["rating"] = max(1, min(10, int(result.get("rating", 5))))
+        rating = max(1, min(10, int(result.get("rating"))))
     except (TypeError, ValueError):
-        result["rating"] = None
+        rating = None
+    explanation = result.get("rating_explanation")
+    result = {
+        "rating": rating,
+        "rating_explanation": explanation if isinstance(explanation, str) else "",
+        "work_conditions": [
+            {"condition": str(c["condition"]), "source": c.get("source") if c.get("source") in ("stated", "typical") else "typical"}
+            for c in result.get("work_conditions") or [] if isinstance(c, dict) and c.get("condition")
+        ],
+        "conflicts_with_needs": string_list(result.get("conflicts_with_needs")),
+        "vague": result.get("vague") is True,
+        "vague_details": string_list(result.get("vague_details")),
+    }
 
     description = (job.get("description") or job.get("text") or "").strip()
     if len(description) < MIN_DESCRIPTION_CHARS:
@@ -183,13 +249,13 @@ def application_guide(job, profile, model=None):
     """Produce an application guide for a job listing, tailored to the user's needs."""
     check_profile(profile)
     prompt = GUIDE_PROMPT.format(profile=profile_prefix(profile), language=profile.get("language", "Romanian"))
-    result = ask(prompt, job, model=model, task="guide")
+    result = ask(prompt, job, model=model, task="guide", schema=GUIDE_SCHEMA)
     if "error" not in result:
         # fixed shape in display order; unused or empty sections are null
         result = {
-            "application_steps": result.get("application_steps") or [],
-            **{section: result.get(section) or None for section in GUIDE_SECTIONS},
-            "questions_to_ask_employer": result.get("questions_to_ask_employer") or [],
+            "application_steps": string_list(result.get("application_steps")),
+            **{section: string_list(result.get(section)) or None for section in GUIDE_SECTIONS},
+            "questions_to_ask_employer": string_list(result.get("questions_to_ask_employer")),
         }
     result["source_url"] = job.get("url")
     return result

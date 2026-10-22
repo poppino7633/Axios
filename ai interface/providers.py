@@ -24,8 +24,9 @@ Supported providers:
                 anything speaking the OpenAI /chat/completions format; for an unlisted one use
                 AI_PROVIDER=openai_compatible with AI_BASE_URL and AI_API_KEY.
 
-To add a new API style, write a function `(config, system_prompt, user_text, model) -> str` and
-register it in PROVIDERS.
+To add a new API style, write a function `(config, system_prompt, user_text, model, schema=None) -> str`
+and register it in PROVIDERS. `schema` is the JSON schema the reply must follow; a style that can enforce
+it server-side should (anthropic does), the others rely on the prompt and their JSON mode.
 """
 
 import functools
@@ -91,7 +92,7 @@ def _post_json(url, headers, payload, provider):
 
 # --- API styles ---------------------------------------------------------------
 
-def _gemini(config, system_prompt, user_text, model):
+def _gemini(config, system_prompt, user_text, model, schema=None):
     generation_config = {
         "temperature": TEMPERATURE,
         "maxOutputTokens": MAX_TOKENS,
@@ -123,14 +124,19 @@ def _anthropic_client(api_key, base_url):
     return anthropic.Anthropic(api_key=api_key, base_url=base_url, timeout=TIMEOUT_SECONDS, max_retries=0)
 
 
-def _anthropic(config, system_prompt, user_text, model):
+def _anthropic(config, system_prompt, user_text, model, schema=None):
     try:
         import anthropic
     except ImportError:
         raise ProviderError("AI_PROVIDER=anthropic needs the 'anthropic' package: "
                             "pip install -r requirements.txt (in the project's .venv)", status=400)
 
-    extra = {"output_config": {"effort": config["thinking"]}} if config["thinking"] else {}
+    output_config = {}
+    if config["thinking"]:
+        output_config["effort"] = config["thinking"]
+    if schema:
+        output_config["format"] = {"type": "json_schema", "schema": schema}  # reply is guaranteed to match
+    extra = {"output_config": output_config} if output_config else {}
     try:
         response = _anthropic_client(config["api_key"], config["base_url"]).messages.create(
             model=model,
@@ -149,7 +155,7 @@ def _anthropic(config, system_prompt, user_text, model):
     return "".join(block.text for block in response.content if block.type == "text")
 
 
-def _openai_compatible(config, system_prompt, user_text, model):
+def _openai_compatible(config, system_prompt, user_text, model, schema=None):
     payload = {
         "model": model,
         "messages": [
@@ -249,7 +255,7 @@ def describe():
     return {"provider": name, "model": os.environ.get("AI_MODEL") or preset.get("model")}
 
 
-def complete(system_prompt, user_text, model=None, task=None):
+def complete(system_prompt, user_text, model=None, task=None, schema=None):
     """Send one system + user message and return the reply text.
 
     `task` (e.g. "rate") picks up AI_MODEL_<TASK> / AI_THINKING_<TASK> from .env when set, so one
@@ -269,7 +275,7 @@ def complete(system_prompt, user_text, model=None, task=None):
     for m in [model] + [f for f in config["fallback_models"] if f != model]:
         for attempt in range(2):
             try:
-                return config["style"](config, system_prompt, user_text, m)
+                return config["style"](config, system_prompt, user_text, m, schema=schema)
             except ProviderError as e:
                 last_error = ProviderError(f"{e} (model: {m})", status=e.status)
                 if e.status in (404, 429):  # model gone / quota used up: go straight to the next model
