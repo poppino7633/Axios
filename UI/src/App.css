@@ -278,6 +278,7 @@ h1 {
 }
 
 .checkbox-indicator {
+  flex-shrink: 0; /* nu se turtește lângă textele lungi pe mai multe rânduri */
   width: 18px;
   height: 18px;
   border: 2px solid #cbd5e1;
