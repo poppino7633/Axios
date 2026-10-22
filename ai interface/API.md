@@ -7,7 +7,7 @@ The AI server runs on one laptop. The extension calls it over the wifi network. 
 | | |
 |---|---|
 | **Base URL** | `http://<server laptop IP>:8765`. The server prints this at startup (`URL for the extension: ...`). Currently `http://10.200.20.64:8765`. |
-| **Auth** | Every request except `GET /health` must send the header `X-Axios-Token: <team token>`. Get the token privately from whoever runs the server. Never commit it. |
+| **Auth** | Every request except `GET /health` must send the header `X-Axios-Token: <team token>`. Get the token privately from whoever runs the server. Never commit it. (A server started with `--host 127.0.0.1` for local-only testing doesn't check the token.) |
 | **Content type** | Send `Content-Type: application/json` with every POST. |
 | **CORS** | Requests from any origin are allowed, and the `X-Axios-Token` header is allowed in preflight. |
 | **Manifest** | Add `"http://10.200.20.64:8765/*"` to `host_permissions` in `extension/manifest.json`. In Firefox the user may have to grant it under *about:addons → Axios → Permissions*. |
@@ -23,11 +23,11 @@ If it hangs, the wifi blocks traffic between laptops. Use a phone hotspot for bo
 
 ## Typical flow
 
-1. The user fills in their needs, then call **`POST /profile`** once. The server condenses the needs and saves them.
-2. On a job page, get the job object from `content.js`, then call **`POST /rate`**.
-3. When the user asks for help applying, call **`POST /guide`** with the same job object.
+**The server stores nothing.** The extension owns the profile.
 
-`/rate` and `/guide` use the saved profile automatically. If no profile has been saved yet, they return an error (see [Errors](#errors)).
+1. The user fills in their needs, then call **`POST /profile`**. It returns a condensed profile. **Store it in the extension** (e.g. `browser.storage.local`, which needs `"storage"` in the manifest's `permissions`).
+2. On a job page, get the job object from `content.js`, then call **`POST /rate`** with `{ "job": <job>, "profile": <stored profile> }`.
+3. When the user asks for help applying, call **`POST /guide`** with the same `{ job, profile }` body.
 
 ---
 
@@ -40,17 +40,15 @@ Checks the server is up. **No token needed.**
 {
   "status": "ok",
   "provider": "gemini",
-  "model": "gemini-flash-latest",
-  "profile_saved": true
+  "model": "gemini-flash-latest"
 }
 ```
-`profile_saved` is `false` until `POST /profile` has succeeded at least once.
 
 ---
 
 ## `POST /profile`
 
-Turns the user's free-form description of their disabilities, difficulties and requirements into a short list of needs, saves it on the server, and returns it. Posting again **replaces** the saved profile. There is one profile per server.
+Turns the user's free-form description of their disabilities, difficulties and requirements into a short list of needs and returns it. **Nothing is saved on the server.** Store the response in the extension and send it back unchanged in every `/rate` and `/guide` request.
 
 **Request body:** any JSON object. The field names are free; these are the suggested ones:
 ```json
@@ -85,28 +83,34 @@ Turns the user's free-form description of their disabilities, difficulties and r
 | `preferences` | string[] | Nice-to-haves |
 | `language` | string | Language the user wrote in. `/rate` and `/guide` answer in this language. |
 
-## `GET /profile`
-
-Returns the saved profile (same shape as above), or `404` with `{"error": "no saved profile ..."}` if there isn't one.
-
 ---
 
 ## `POST /rate`
 
-Rates how well a job fits the saved profile, describes the work conditions, and flags vague job descriptions.
+Rates how well a job fits the user's profile, describes the work conditions, and flags vague job descriptions.
 
-**Request body:** the job object from `extension/content.js`. Every field is passed to the AI, so extra fields help. `description` matters most.
+**Request body:** an object with two fields:
+- `job`: the job object from `extension/content.js`. Every field is passed to the AI, so extra fields help. `description` matters most.
+- `profile`: the object `/profile` returned, unchanged.
+
 ```json
 {
-  "url": "https://www.ejobs.ro/user/locuri-de-munca/...",
-  "title": "Junior Python Developer",
-  "company": "Example SRL",
-  "location": "București",
-  "salary": null,
-  "workMode": "Hibrid",
-  "employmentType": "Full time",
-  "careerLevel": "Entry-Level",
-  "description": "We are looking for a Junior Python Developer ..."
+  "job": {
+    "url": "https://www.ejobs.ro/user/locuri-de-munca/...",
+    "title": "Junior Python Developer",
+    "company": "Example SRL",
+    "location": "București",
+    "salary": null,
+    "workMode": "Hibrid",
+    "employmentType": "Full time",
+    "careerLevel": "Entry-Level",
+    "description": "We are looking for a Junior Python Developer ..."
+  },
+  "profile": {
+    "needs": ["predominantly seated work", "no heavy lifting"],
+    "preferences": ["quiet work environment"],
+    "language": "English"
+  }
 }
 ```
 
@@ -138,15 +142,15 @@ Rates how well a job fits the saved profile, describes the work conditions, and 
 | `unknown_for_needs` | string[] | Needs the posting says nothing about |
 | `vague` | boolean | `true` if the posting uses empty phrases ("salariu motivant", "loc de muncă plăcut", ...) or leaves out basics. Also forced to `true` if `description` is under 300 characters. |
 | `vague_details` | string[] | The vague phrases quoted, or the missing information |
-| `source_url` | string | Copied from the request's `url` |
+| `source_url` | string | Copied from `job.url` |
 
 ---
 
 ## `POST /guide`
 
-Builds an application guide for the job, tailored to the saved profile.
+Builds an application guide for the job, tailored to the user's profile.
 
-**Request body:** the same job object as `/rate`.
+**Request body:** the same `{ "job": {...}, "profile": {...} }` as `/rate`.
 
 **Response `200`**
 ```json
@@ -184,13 +188,13 @@ Every error has the same shape:
 
 | Status | When |
 |---|---|
-| `400` | Body is not valid JSON, no profile is saved yet (on `/rate` or `/guide`), or the server's AI config is wrong |
+| `400` | Body is not a JSON object; `/rate` or `/guide` without `job`, or with a missing or malformed `profile`; or the server's AI config is wrong |
 | `401` | `X-Axios-Token` header missing or wrong |
-| `404` | Unknown endpoint, or `GET /profile` with no saved profile |
+| `404` | Unknown endpoint |
 | `500` | Unexpected server bug. Tell the person running the server. |
 | `502` | The AI provider failed (overloaded or rate-limited) even after retries. Safe to retry later. |
 
-> **Always check for `error` in the body, even on `200`.** If the AI replies with something that isn't valid JSON, the server still returns `200`, with `{"error": "model did not return valid JSON", "raw": "...", "source_url": "..."}`. Show an error and offer a retry.
+> **Always check for `error` in the body, even on `200`.** If the AI replies with something that isn't valid JSON, the server still returns `200`, with `{"error": "model did not return valid JSON", "raw": "..."}` (`/rate` and `/guide` also include `source_url`). Show an error and offer a retry. On `/profile`, don't store a response that has `error` in it.
 
 ---
 
@@ -211,21 +215,34 @@ async function axios(path, body) {
   return data;
 }
 
-// usage
+// 1. once, when the user submits their needs: condense and store locally
+const profile = await axios("/profile", { disabilities: "...", difficulties: "...", requirements: "...", extras: "..." });
+await browser.storage.local.set({ profile });
+
+// 2. on a job page
+const { profile: stored } = await browser.storage.local.get("profile");
+if (!stored) { /* ask the user to fill in their needs first */ }
 const job = await browser.tabs.sendMessage(tab.id, { type: "GET_JOB_DATA" });
-const rating = await axios("/rate", job);      // ~20-40 s
-const guide = await axios("/guide", job);      // on demand
-await axios("/profile", { disabilities: "...", difficulties: "...", requirements: "...", extras: "..." });
+const rating = await axios("/rate", { job, profile: stored });   // ~20-40 s
+
+// 3. on demand
+const guide = await axios("/guide", { job, profile: stored });
 ```
 
 ## Testing from a terminal
 
+Run from `ai interface/` (where `example_user.json` and `example_job.json` live):
 ```bash
 TOKEN=<team token>
 URL=http://10.200.20.64:8765
 curl $URL/health
-curl -X POST $URL/profile -H "X-Axios-Token: $TOKEN" -d @example_user.json
-curl -X POST $URL/rate    -H "X-Axios-Token: $TOKEN" -d @example_job.json
-curl -X POST $URL/guide   -H "X-Axios-Token: $TOKEN" -d @example_job.json
+
+# get a profile and keep it, like the extension would
+curl -X POST $URL/profile -H "X-Axios-Token: $TOKEN" -d @example_user.json > /tmp/profile.json
+
+# wrap job + profile into one request body
+python3 -c "import json; print(json.dumps({'job': json.load(open('example_job.json')), 'profile': json.load(open('/tmp/profile.json'))}))" > /tmp/request.json
+
+curl -X POST $URL/rate  -H "X-Axios-Token: $TOKEN" -d @/tmp/request.json
+curl -X POST $URL/guide -H "X-Axios-Token: $TOKEN" -d @/tmp/request.json
 ```
-(`example_user.json` and `example_job.json` are in `ai interface/`.)
