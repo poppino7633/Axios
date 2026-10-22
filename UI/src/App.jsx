@@ -3,6 +3,18 @@ import OnboardingQuiz from './OnboardingQuiz';
 import { MOCK_RATE_RESULT, MOCK_GUIDE_RESULT } from './mockData';
 import './App.css';
 
+// Cere datele jobului de la content script. Dacă tab-ul era deschis înainte ca extensia să fie
+// (re)încărcată, content script-ul nu rulează acolo ("Receiving end does not exist"), așa că
+// îl injectăm acum (permisiunile activeTab + scripting) și reîncercăm.
+async function getJobFromTab(tabId) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, { type: "GET_JOB_DATA" });
+  } catch {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+    return chrome.tabs.sendMessage(tabId, { type: "GET_JOB_DATA" });
+  }
+}
+
 // Toggle care se păstrează între deschiderile popup-ului
 function usePersistentToggle(key) {
   const [value, setValue] = useState(() => {
@@ -51,7 +63,7 @@ export default function App() {
           // B. Obține datele jobului din pagina activă via Content Script
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
           if (tab?.id) {
-            const job = await chrome.tabs.sendMessage(tab.id, { type: "GET_JOB_DATA" });
+            const job = await getJobFromTab(tab.id);
             setJobData(job);
             
             // Dacă avem profil, rulăm automat analiza jobului
