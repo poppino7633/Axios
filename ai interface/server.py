@@ -5,11 +5,13 @@ When reachable from the network, every request except /health must send the shar
 (AXIOS_TOKEN in .env) in an "X-Axios-Token" header.
 
 Endpoints (all JSON in / JSON out):
-    GET  /health    -> {"status": "ok", "model": ..., "profile_saved": bool}
+    GET  /health    -> {"status": "ok", "provider": ..., "model": ..., "profile_saved": bool}
     GET  /profile   -> the saved profile
     POST /profile   -> body: user's needs input       -> condensed profile (also saved locally)
     POST /rate      -> body: job {"url","title","description",...} -> rating, work conditions, vagueness flag
     POST /guide     -> body: job {"url","title","description",...} -> application guide
+
+Full reference for the extension: API.md
 
 Usage:
     python server.py [--host 127.0.0.1] [--port 8765]   (defaults come from .env)
