@@ -4,8 +4,8 @@ Endpoints (all JSON in / JSON out):
     GET  /health    -> {"status": "ok", "model": ..., "profile_saved": bool}
     GET  /profile   -> the saved profile
     POST /profile   -> body: user's needs input       -> condensed profile (also saved locally)
-    POST /rate      -> body: job {"url","title","text"} -> rating, work conditions, vagueness flag
-    POST /guide     -> body: job {"url","title","text"} -> application guide
+    POST /rate      -> body: job {"url","title","description",...} -> rating, work conditions, vagueness flag
+    POST /guide     -> body: job {"url","title","description",...} -> application guide
 
 Usage:
     python server.py [--host 127.0.0.1] [--port 8765]   (defaults come from .env)
@@ -13,9 +13,11 @@ Usage:
 
 import argparse
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import main
+import providers
 
 POST_ROUTES = {
     "/profile": main.build_profile,
@@ -50,7 +52,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._send_json(200, {
                 "status": "ok",
-                "model": main.DEFAULT_MODEL,
+                **providers.describe(),
                 "profile_saved": main.PROFILE_PATH.exists(),
             })
         elif self.path == "/profile":
@@ -77,16 +79,17 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._send_json(200, handler(data))
         except RuntimeError as e:
-            # missing token, missing profile, or an error from Hugging Face
-            self._send_json(502 if "Hugging Face" in str(e) else 400, {"error": str(e)})
+            # bad config, missing profile, or an error from the AI provider
+            status = getattr(e, "status", None)
+            self._send_json(502 if status and status >= 429 else 400, {"error": str(e)})
         except Exception as e:
             self._send_json(500, {"error": f"{type(e).__name__}: {e}"})
 
 
 def run():
     parser = argparse.ArgumentParser(description="Axios AI local server.")
-    parser.add_argument("--host", default=main.os.environ.get("AXIOS_HOST", "127.0.0.1"))
-    parser.add_argument("--port", type=int, default=int(main.os.environ.get("AXIOS_PORT", 8765)))
+    parser.add_argument("--host", default=os.environ.get("AXIOS_HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("AXIOS_PORT", 8765)))
     args = parser.parse_args()
 
     if args.host not in ("127.0.0.1", "localhost", "::1"):
@@ -97,9 +100,11 @@ def run():
     except OSError as e:
         raise SystemExit(f"Can't listen on {args.host}:{args.port} ({e.strerror}). "
                          f"Is the server already running? Pick another port with AXIOS_PORT in .env or --port.")
-    print(f"Axios AI server on http://{args.host}:{args.port} (model: {main.DEFAULT_MODEL})")
-    if not main.os.environ.get("HF_TOKEN"):
-        print("WARNING: HF_TOKEN is not set; add it to 'ai interface/.env' (see .env.example)")
+    print(f"Axios AI server on http://{args.host}:{args.port} ({providers.describe()})")
+    try:
+        providers.get_config()
+    except providers.ProviderError as e:
+        print(f"WARNING: {e}")
     server.serve_forever()
 
 
