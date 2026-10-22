@@ -34,12 +34,87 @@ async function axiosRequest(path, body = null) {
   return data;
 }
 
+// Result cache
+// /rate and /guide results are kept in storage.local, keyed by the job's content and the profile,
+// so reopening the popup on the same job is instant and doesn't call the AI again. A changed
+// posting or a new profile gives a new key, so stale results are never returned.
+const CACHE_STORAGE_KEY = "resultCache";
+const CACHE_MAX_ENTRIES = 50;
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+const inFlight = new Map();          // key -> pending request, so duplicate clicks share one call
+let cacheWrites = Promise.resolve(); // serializes read-modify-write of the cache
+
+async function sha256(value) {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function cacheKey(kind, job, profile) {
+  // ignore ?query and #hash (tracking params) so the same posting maps to the same entry
+  const url = new URL(job.url);
+  const page = `${url.origin}${url.pathname}`;
+  return `${kind}:${page}:${await sha256({ job: { ...job, url: page }, profile })}`;
+}
+
+async function readCache(key) {
+  const { [CACHE_STORAGE_KEY]: cache = {} } = await browser.storage.local.get(CACHE_STORAGE_KEY);
+  const entry = cache[key];
+  return entry && Date.now() - entry.savedAt < CACHE_TTL_MS ? entry.result : null;
+}
+
+function writeCache(key, result) {
+  cacheWrites = cacheWrites.then(async () => {
+    const { [CACHE_STORAGE_KEY]: cache = {} } = await browser.storage.local.get(CACHE_STORAGE_KEY);
+    cache[key] = { result, savedAt: Date.now() };
+
+    // drop expired entries, then keep only the newest CACHE_MAX_ENTRIES
+    const now = Date.now();
+    const kept = Object.entries(cache)
+      .filter(([, entry]) => now - entry.savedAt < CACHE_TTL_MS)
+      .sort(([, a], [, b]) => b.savedAt - a.savedAt)
+      .slice(0, CACHE_MAX_ENTRIES);
+
+    await browser.storage.local.set({ [CACHE_STORAGE_KEY]: Object.fromEntries(kept) });
+  }).catch(error => console.error("[Axios] Cache write failed:", error));
+  return cacheWrites;
+}
+
+function clearCache() {
+  cacheWrites = cacheWrites.then(() => browser.storage.local.remove(CACHE_STORAGE_KEY));
+  return cacheWrites;
+}
+
+// Returns the cached result when there is one (unless refresh is set); otherwise calls the server once.
+async function cachedRequest(kind, path, job, profile, refresh = false) {
+  const key = await cacheKey(kind, job, profile);
+
+  if (!refresh) {
+    const cached = await readCache(key);
+    if (cached) return cached;
+  }
+
+  if (inFlight.has(key)) return inFlight.get(key);
+
+  const request = axiosRequest(path, { job, profile })
+    .then(async result => {
+      await writeCache(key, result); // errors throw above and are never cached
+      return result;
+    })
+    .finally(() => inFlight.delete(key));
+
+  inFlight.set(key, request);
+  return request;
+}
+
 // React UI message handlers
 browser.runtime.onMessage.addListener(async (message) => {
   switch (message.type) {
     case "SAVE_PROFILE": {
       const profile = await axiosRequest("/profile", message.profile);
       await browser.storage.local.set({ profile });
+      await clearCache(); // results were for the old profile
       return profile;
     }
 
@@ -56,13 +131,11 @@ browser.runtime.onMessage.addListener(async (message) => {
         throw new Error("Create an accessibility profile first");
       }
 
-      const path =
-        message.type === "RATE_JOB" ? "/rate" : "/guide";
+      const [kind, path] =
+        message.type === "RATE_JOB" ? ["rate", "/rate"] : ["guide", "/guide"];
 
-      return axiosRequest(path, {
-        job: message.job,
-        profile
-      });
+      // message.refresh = true skips the cache (e.g. a "re-analyse" button)
+      return cachedRequest(kind, path, message.job, profile, message.refresh === true);
     }
 
     default:
