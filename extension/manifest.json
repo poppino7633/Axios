@@ -2,28 +2,42 @@
 {
   "manifest_version": 3,
   "name": "Axios",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI-powered job accessibility assistant",
-  "permissions": ["tabs", "storage"],
+
+  "permissions": [
+    "tabs",
+    "storage"
+  ],
+
   "host_permissions": [
-    "https://www.ejobs.ro/*",
     "http://10.200.20.64:8765/*"
   ],
+
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://10.200.20.64:8765"
   },
+
   "content_scripts": [
     {
-      "matches": ["https://www.ejobs.ro/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
+
   "background": {
-    "scripts": ["background.js"]
+    "scripts": [
+      "background.js"
+    ]
   },
+
   "action": {
-    "default_title": "Test Axios",
+    "default_title": "Axios",
     "default_popup": "index.html"
   }
 }
