@@ -1,7 +1,7 @@
 """Axios AI interface.
 
 Three operations, each JSON in -> JSON out, backed by whichever LLM provider is set in .env
-(see providers.py; currently Google AI Studio / Gemini):
+(see providers.py):
 
   1. profile  - takes the user's description of their disabilities / difficulties / requirements
                 (plus a free-text "extras" box) and trims it to a concise list of needs. Nothing is
@@ -9,8 +9,11 @@ Three operations, each JSON in -> JSON out, backed by whichever LLM provider is 
   2. rate     - takes a job listing (shape produced by extension/content.js: {"url", "title", "description", ...})
                 plus the profile, and returns a 1-10 suitability rating, the work conditions, and a
                 flag if the description is too vague to judge.
-  3. guide    - takes a job listing plus the profile and returns an application guide: process,
-                attire, unspoken rules and tips, tailored to the user's needs.
+  3. guide    - takes a job listing plus the profile and returns a short step-by-step application
+                guide; only the sections this person needs are filled, the rest are null.
+
+Every reply is checked against a JSON schema: Claude enforces it server-side, and the shape checks
+below repair anything another provider gets wrong, so the extension always gets the documented shape.
 
 Usage:
     configure the provider and key in ai interface/.env (see .env.example)
@@ -32,20 +35,21 @@ import providers  # also loads ai interface/.env
 # Descriptions shorter than this are flagged as vague regardless of what the model says.
 MIN_DESCRIPTION_CHARS = 300
 
-PROFILE_PROMPT = """You turn a person's description of their disabilities, difficulties and workplace requirements
-into a concise list of concrete needs that can be checked against a job posting.
+PROFILE_PROMPT = """Compress a person's description of their disabilities, difficulties and requirements into the
+shortest list of workplace needs that can be checked against a job posting.
 Rules:
-- Remove filler, repetition and emotional framing; keep every actual need or limitation.
-- Each need is one short, specific phrase (e.g. "no heavy lifting", "wheelchair-accessible workplace",
-  "flexible hours for medical appointments").
-- Do not invent needs the person did not state or clearly imply.
-- Write in the same language the person used.
-Respond with ONLY a JSON object, no prose, no markdown fences:
-{
-  "needs": [string],          // concise list of needs / limitations
-  "preferences": [string],    // things they would like but are not strict requirements
-  "language": string          // language the person wrote in, e.g. "Romanian"
-}"""
+- Each item is a short workplace condition (2-6 words), not a diagnosis (e.g. "no heavy lifting",
+  "mostly seated work", "can change position", "commute max 30 min").
+- Merge only items that say the same thing ("can't stand long" + "needs to sit" = "mostly seated work").
+  Keep every distinct limitation or request, and keep numbers and limits exactly.
+- Keep the person's meaning: "not on the phone all day" is "limited phone work", not "no phone calls".
+- Also keep help they ask for with applying, as a need (e.g. "unsure what to wear" = "interview attire
+  guidance", "doesn't know how to act" = "interview etiquette guidance").
+- Drop filler, feelings, medical detail and anything irrelevant to a job.
+- needs = what they need or cannot do; preferences = what they "would like" or "prefer", plus skills.
+- Do not invent needs. Write items in the person's language; "language" is its English name (e.g. "Romanian").
+Respond with ONLY this JSON:
+{"needs": [string], "preferences": [string], "language": string}"""
 
 RATE_PROMPT = """Rate how suitable this job posting is for a person with these needs:
 {profile}
@@ -55,6 +59,8 @@ Rules:
   construction = heavy physical labour, standing; call centre = long phone calls), and judge the needs
   against them too. Everything else must come from the posting ("stated"); never invent salary,
   schedule, location or benefits.
+- work_conditions are concrete facts about the work (tasks, hours, place, physical demands), never
+  buzzwords: "salariu motivant", "loc de muncă plăcut", "echipă dinamică" go only in vague_details.
 - Vague phrases instead of facts ("salariu motivant", "loc de muncă plăcut", ...) or missing basics
   (pay, schedule, location, physical demands) mean "vague": true.
 - Rating 1-10 (10 = fits every need). Missing information keeps it moderate, not high or low.
@@ -70,31 +76,81 @@ Respond with ONLY this JSON:
   "vague_details": [string]           // vague phrases quoted, or missing information
 }}"""
 
-GUIDE_PROMPT = """You help a specific person apply for a job.
+# Optional guide sections, in display order. The ones a person doesn't need come back as null.
+GUIDE_SECTIONS = [
+    "travel_and_access",      # getting to the interview, step-free venue, accessible room
+    "interview_format",       # communication format, written/remote options, assistive tools
+    "sensory_comfort",        # noise, light, breaks around the interview
+    "attire",                 # what to wear
+    "etiquette",              # what to expect, unspoken rules, small talk
+    "disclosure",             # whether/when/how to mention needs and ask for adjustments
+    "schedule_and_health",    # timing, breaks, medical appointments, energy
+]
 
-The person's needs:
+GUIDE_PROMPT = """Write a short, step-by-step application guide for this job posting, for a person with:
 {profile}
 
-Write a practical application guide for the job posting you receive.
-Rules:
-- Be specific to this job, this industry and the country of the posting (default: Romania).
-- Cover the typical application process, appropriate attire for the interview, unspoken rules and etiquette,
-  and other helpful tips.
-- Include advice on whether, when and how to discuss the person's needs or request accommodations,
-  given the person's needs above. Mention relevant rights only if you are confident they apply.
-- Do not invent facts about the employer that are not in the posting.
-- Write all text in {language}.
+Fill only the sections this person actually needs (usually 2-4) and set every other section to null.
+For example: reduced mobility -> travel_and_access; neurodivergence / anxiety -> etiquette, attire,
+sensory_comfort, interview_format; hearing or vision -> interview_format; chronic illness / pain ->
+schedule_and_health, disclosure. Use attire for someone with only physical needs only if the job itself
+has a dress expectation worth knowing.
 
-Respond with ONLY a JSON object, no prose, no markdown fences:
+Rules:
+- Every step is one short, clear instruction (max ~15 words), in the order the person does it.
+- Be specific to this job and country (default: Romania). Don't invent facts about the employer.
+- Rights only in general terms ("you can ask for flexible hours"); never cite laws, articles or amounts.
+- Write in {language}.
+
+Respond with ONLY this JSON (each section: 2-4 steps, or null):
 {{
-  "application_steps": [string],      // ordered steps, from preparing the CV to following up
-  "documents_to_prepare": [string],
-  "attire": string,
-  "unspoken_rules": [string],
-  "interview_tips": [string],
-  "accommodation_advice": [string],
-  "questions_to_ask_employer": [string]  // questions that clarify things relevant to the person's needs
+  "application_steps": [string],         // 4-6 steps, from preparing the CV to following up
+  "travel_and_access": [string] | null,
+  "interview_format": [string] | null,
+  "sensory_comfort": [string] | null,
+  "attire": [string] | null,
+  "etiquette": [string] | null,
+  "disclosure": [string] | null,
+  "schedule_and_health": [string] | null,
+  "questions_to_ask_employer": [string]  // max 3, about this person's needs
 }}"""
+
+
+# JSON schemas for the replies (enforced by providers that support it, e.g. Claude).
+STRINGS = {"type": "array", "items": {"type": "string"}}
+STRINGS_OR_NULL = {"anyOf": [STRINGS, {"type": "null"}]}
+
+
+def object_schema(properties):
+    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+
+
+PROFILE_SCHEMA = object_schema({"needs": STRINGS, "preferences": STRINGS, "language": {"type": "string"}})
+
+RATE_SCHEMA = object_schema({
+    "rating": {"type": "integer", "enum": list(range(1, 11))},
+    "rating_explanation": {"type": "string"},
+    "work_conditions": {"type": "array", "items": object_schema({
+        "condition": {"type": "string"},
+        "source": {"type": "string", "enum": ["stated", "typical"]},
+    })},
+    "conflicts_with_needs": STRINGS,
+    "vague": {"type": "boolean"},
+    "vague_details": STRINGS,
+})
+
+GUIDE_SCHEMA = object_schema({
+    "application_steps": STRINGS,
+    **{section: STRINGS_OR_NULL for section in GUIDE_SECTIONS},
+    "questions_to_ask_employer": STRINGS,
+})
+
+
+def string_list(value):
+    """A list of non-empty strings, whatever the model actually sent."""
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if isinstance(item, (str, int, float)) and str(item).strip()]
 
 
 def extract_json(text):
@@ -109,20 +165,32 @@ def extract_json(text):
         raise
 
 
-def ask(system_prompt, user_content, model=None):
-    """Send one request and return the parsed JSON reply, or an error object if parsing fails."""
-    reply = providers.complete(system_prompt, json.dumps(user_content, ensure_ascii=False), model=model)
+def ask(system_prompt, user_content, model=None, task=None, schema=None):
+    """Send one request and return the parsed JSON object, or an error object if there isn't one."""
+    reply = providers.complete(system_prompt, json.dumps(user_content, ensure_ascii=False),
+                               model=model, task=task, schema=schema)
     try:
-        return extract_json(reply)
+        result = extract_json(reply)
     except json.JSONDecodeError:
         return {"error": "model did not return valid JSON", "raw": reply}
+    if not isinstance(result, dict):
+        return {"error": "model did not return a JSON object", "raw": reply}
+    return result
 
 
 # --- 1. profile -------------------------------------------------------------
 
 def build_profile(user_input, model=None):
     """Condense the user's free-form input into a list of needs. The caller stores the result."""
-    return ask(PROFILE_PROMPT, user_input, model=model)
+    result = ask(PROFILE_PROMPT, user_input, model=model, task="profile", schema=PROFILE_SCHEMA)
+    if "error" in result:
+        return result
+    language = result.get("language")
+    return {
+        "needs": string_list(result.get("needs")),
+        "preferences": string_list(result.get("preferences")),
+        "language": language.strip() if isinstance(language, str) and language.strip() else "Romanian",
+    }
 
 
 def check_profile(profile):
@@ -131,9 +199,9 @@ def check_profile(profile):
 
 
 def profile_prefix(profile):
-    lines = [f"- {n}" for n in profile.get("needs", [])]
-    lines += [f"- (preference) {p}" for p in profile.get("preferences", [])]
-    return "\n".join(lines) or "- (no specific needs given)"
+    needs = "; ".join(profile.get("needs", [])) or "none given"
+    preferences = "; ".join(profile.get("preferences", []))
+    return f"Needs: {needs}" + (f"\nPreferences: {preferences}" if preferences else "")
 
 
 # --- 2. rate ----------------------------------------------------------------
@@ -142,15 +210,27 @@ def rate_job(job, profile, model=None):
     """Rate a job listing against the user's needs and describe its work conditions."""
     check_profile(profile)
     prompt = RATE_PROMPT.format(profile=profile_prefix(profile), language=profile.get("language", "Romanian"))
-    result = ask(prompt, job, model=model)
+    result = ask(prompt, job, model=model, task="rate", schema=RATE_SCHEMA)
     if "error" in result:
         result["source_url"] = job.get("url")
         return result
 
     try:
-        result["rating"] = max(1, min(10, int(result.get("rating", 5))))
+        rating = max(1, min(10, int(result.get("rating"))))
     except (TypeError, ValueError):
-        result["rating"] = None
+        rating = None
+    explanation = result.get("rating_explanation")
+    result = {
+        "rating": rating,
+        "rating_explanation": explanation if isinstance(explanation, str) else "",
+        "work_conditions": [
+            {"condition": str(c["condition"]), "source": c.get("source") if c.get("source") in ("stated", "typical") else "typical"}
+            for c in result.get("work_conditions") or [] if isinstance(c, dict) and c.get("condition")
+        ],
+        "conflicts_with_needs": string_list(result.get("conflicts_with_needs")),
+        "vague": result.get("vague") is True,
+        "vague_details": string_list(result.get("vague_details")),
+    }
 
     description = (job.get("description") or job.get("text") or "").strip()
     if len(description) < MIN_DESCRIPTION_CHARS:
@@ -169,7 +249,14 @@ def application_guide(job, profile, model=None):
     """Produce an application guide for a job listing, tailored to the user's needs."""
     check_profile(profile)
     prompt = GUIDE_PROMPT.format(profile=profile_prefix(profile), language=profile.get("language", "Romanian"))
-    result = ask(prompt, job, model=model)
+    result = ask(prompt, job, model=model, task="guide", schema=GUIDE_SCHEMA)
+    if "error" not in result:
+        # fixed shape in display order; unused or empty sections are null
+        result = {
+            "application_steps": string_list(result.get("application_steps")),
+            **{section: string_list(result.get(section)) or None for section in GUIDE_SECTIONS},
+            "questions_to_ask_employer": string_list(result.get("questions_to_ask_employer")),
+        }
     result["source_url"] = job.get("url")
     return result
 

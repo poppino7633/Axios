@@ -133,8 +133,10 @@ def run():
 
     if args.host not in LOOPBACK_HOSTS:
         Handler.token = os.environ.get("AXIOS_TOKEN") or None
+        if Handler.token == "pick_a_random_string":  # the placeholder from .env.example
+            Handler.token = None
         if not Handler.token:
-            raise SystemExit("AXIOS_TOKEN must be set in .env before exposing the server to the network "
+            raise SystemExit("AXIOS_TOKEN must be set to your own random string in .env before exposing the server to the network "
                              "(anyone on the wifi could otherwise use the API key). "
                              "Use --host 127.0.0.1 for local-only testing.")
 

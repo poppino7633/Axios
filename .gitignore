@@ -152,3 +152,6 @@ vite.config.ts.timestamp-*
 ai interface/profile.json
 ai interface/.env
 !ai interface/.env.example
+
+# Python bytecode caches
+__pycache__/
