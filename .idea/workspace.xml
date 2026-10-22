@@ -5,11 +5,19 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="06320ab6-cb74-44a9-9859-e4328495164f" name="Changes" comment="">
+<<<<<<< HEAD
+      <change beforePath="$PROJECT_DIR$/UI/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/UI/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/UI/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/UI/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/UI/src/App.css" beforeDir="false" afterPath="$PROJECT_DIR$/UI/src/App.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/UI/src/App.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/UI/src/App.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/UI/src/index.css" beforeDir="false" afterPath="$PROJECT_DIR$/UI/src/index.css" afterDir="false" />
+=======
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/ai interface/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/.env.example" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/ai interface/API.md" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/API.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/ai interface/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/ai interface/providers.py" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/providers.py" afterDir="false" />
+>>>>>>> caeded01d4bdb490a93b1c4c1501b1975add9d86
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -50,7 +58,11 @@
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "codeWithMe.voiceChat.enabledByDefault": "false",
+<<<<<<< HEAD
+    "git-widget-placeholder": "UI",
+=======
     "git-widget-placeholder": "ai-interface",
+>>>>>>> caeded01d4bdb490a93b1c4c1501b1975add9d86
     "git.auto.fetch.suggestion.counter": "1",
     "last_opened_file_path": "/home/forcedev/Documents/new work/Axios",
     "node.js.detected.package.jshint": "true",
