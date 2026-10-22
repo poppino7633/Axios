@@ -156,6 +156,4 @@ async function testJobRating() {
   }
 }
 
-// Run automatically when background.js starts
-testJobRating();
 
