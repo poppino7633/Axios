@@ -5,11 +5,14 @@ When reachable from the network, every request except /health must send the shar
 (AXIOS_TOKEN in .env) in an "X-Axios-Token" header.
 
 Endpoints (all JSON in / JSON out):
-    GET  /health    -> {"status": "ok", "model": ..., "profile_saved": bool}
-    GET  /profile   -> the saved profile
-    POST /profile   -> body: user's needs input       -> condensed profile (also saved locally)
-    POST /rate      -> body: job {"url","title","description",...} -> rating, work conditions, vagueness flag
-    POST /guide     -> body: job {"url","title","description",...} -> application guide
+    GET  /health    -> {"status": "ok", "provider": ..., "model": ...}
+    POST /profile   -> body: user's needs input        -> condensed profile (the extension stores it)
+    POST /rate      -> body: {"job": {...}, "profile": {...}} -> rating, work conditions, vagueness flag
+    POST /guide     -> body: {"job": {...}, "profile": {...}} -> application guide
+
+The server stores nothing; the profile lives in the extension.
+
+Full reference for the extension: API.md
 
 Usage:
     python server.py [--host 127.0.0.1] [--port 8765]   (defaults come from .env)
@@ -28,10 +31,19 @@ import providers
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 TOKEN_HEADER = "X-Axios-Token"
 
+def with_job_and_profile(handler):
+    """Adapt a (job, profile) function to a {"job": ..., "profile": ...} request body."""
+    def run(data):
+        if not isinstance(data.get("job"), dict):
+            raise RuntimeError('request body must be {"job": {...}, "profile": {...}}')
+        return handler(data["job"], data.get("profile"))
+    return run
+
+
 POST_ROUTES = {
     "/profile": main.build_profile,
-    "/rate": main.rate_job,
-    "/guide": main.application_guide,
+    "/rate": with_job_and_profile(main.rate_job),
+    "/guide": with_job_and_profile(main.application_guide),
 }
 
 
@@ -71,16 +83,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             return
         if self.path == "/health":
-            self._send_json(200, {
-                "status": "ok",
-                **providers.describe(),
-                "profile_saved": main.PROFILE_PATH.exists(),
-            })
-        elif self.path == "/profile":
-            try:
-                self._send_json(200, main.load_profile())
-            except RuntimeError as e:
-                self._send_json(404, {"error": str(e)})
+            self._send_json(200, {"status": "ok", **providers.describe()})
         else:
             self._send_json(404, {"error": f"unknown endpoint {self.path}"})
 
@@ -95,14 +98,16 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(data, dict):
+                raise ValueError
         except (ValueError, json.JSONDecodeError):
-            self._send_json(400, {"error": "request body must be valid JSON"})
+            self._send_json(400, {"error": "request body must be a JSON object"})
             return
 
         try:
             self._send_json(200, handler(data))
         except RuntimeError as e:
-            # bad config, missing profile, or an error from the AI provider
+            # bad request shape, bad config, or an error from the AI provider
             status = getattr(e, "status", None)
             self._send_json(502 if status and status >= 429 else 400, {"error": str(e)})
         except Exception as e:
@@ -130,7 +135,7 @@ def run():
         Handler.token = os.environ.get("AXIOS_TOKEN") or None
         if not Handler.token:
             raise SystemExit("AXIOS_TOKEN must be set in .env before exposing the server to the network "
-                             "(anyone on the wifi could otherwise use the API key and read the saved profile). "
+                             "(anyone on the wifi could otherwise use the API key). "
                              "Use --host 127.0.0.1 for local-only testing.")
 
     try:
