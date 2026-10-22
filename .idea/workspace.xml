@@ -5,11 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="06320ab6-cb74-44a9-9859-e4328495164f" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ai interface/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/.env.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ai interface/API.md" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/API.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/ai interface/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/ai interface/providers.py" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/providers.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ai interface/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/ai interface/server.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -109,7 +109,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/ai interface/main.py</url>
-          <line>285</line>
+          <line>198</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>
