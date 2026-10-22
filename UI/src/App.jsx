@@ -48,7 +48,7 @@ export default function App() {
             setActiveTab('analysis'); // Mergem direct pe Analiză dacă profilul există
           }
 
-          // B. Obține datele jobului din pagina eJobs activă via Content Script
+          // B. Obține datele jobului din pagina activă via Content Script
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
           if (tab?.id) {
             const job = await chrome.tabs.sendMessage(tab.id, { type: "GET_JOB_DATA" });
@@ -60,7 +60,7 @@ export default function App() {
             }
           }
         } catch (err) {
-          console.log("Extensia nu este pe o pagină eJobs sau rulează în modul Dev:", err);
+          console.log("Pagina activă nu poate fi citită sau extensia rulează în modul Dev:", err);
         }
       } else {
         // Fallback pentru modul dev pe localhost:5173
@@ -224,7 +224,7 @@ export default function App() {
                 {!savedProfile ? (
                   <div className="section-card info-card">
                     <h3>⚠️ Niciun profil configurat</h3>
-                    <p>Completează mai întâi profilul tău de accesibilitate pentru a putea analiza joburile de pe eJobs.</p>
+                    <p>Completează mai întâi profilul tău de accesibilitate pentru a putea analiza anunțurile de job.</p>
                     <button className="primary-btn" onClick={() => setActiveTab('preferences')}>
                       Creează Profil
                     </button>
