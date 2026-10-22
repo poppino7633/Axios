@@ -39,6 +39,32 @@ body {
   color: var(--text-main);
 }
 
+/* Popup-ul extensiei: mărime fixă, la mijloc între cele două tab-uri
+   (Setări Profil ~460x600, Analiză Job ~751x330); conținutul se derulează în interior */
+html.popup {
+  --popup-width: 605px;
+  --popup-height: 465px;
+}
+
+html.popup,
+html.popup body {
+  width: var(--popup-width);
+  min-width: 0;
+  height: var(--popup-height);
+  min-height: 0;
+  overflow: hidden;
+}
+
+html.popup #root {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+html.popup .app-wrapper {
+  min-height: 100%;
+}
+
 /* Fundalul umple toată fereastra; conținutul stă într-o coloană centrată */
 .app-wrapper {
   width: 100%;
