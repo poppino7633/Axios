@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Icon from './Icon';
 
 export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
   const [prefs, setPrefs] = useState({
@@ -97,20 +98,20 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
 
       {error && (
         <div className="error-banner">
-          ⚠️ Eroare la salvarea profilului: {error}
+          <Icon name="triangle-alert" /> Eroare la salvarea profilului: {error}
         </div>
       )}
 
       {/* 1. Regim de lucru */}
       <div className="section-card">
-        <h3>💼 Regim de lucru</h3>
+        <h3><Icon name="briefcase" /> Regim de lucru</h3>
         <div className="radio-tile-group">
           <button
             type="button"
             className={`radio-tile ${prefs.workMode === 'remote' ? 'active' : ''}`}
             onClick={() => handleRadioChange('remote')}
           >
-            <span className="tile-icon">🏠</span>
+            <span className="tile-icon"><Icon name="house" size={28} /></span>
             <span className="tile-label">Exclusive Remote</span>
           </button>
           
@@ -119,7 +120,7 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
             className={`radio-tile ${prefs.workMode === 'hybrid' ? 'active' : ''}`}
             onClick={() => handleRadioChange('hybrid')}
           >
-            <span className="tile-icon">🏢</span>
+            <span className="tile-icon"><Icon name="building" size={28} /></span>
             <span className="tile-label">Hybrid</span>
           </button>
           
@@ -128,7 +129,7 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
             className={`radio-tile ${prefs.workMode === 'nu_conteaza' ? 'active' : ''}`}
             onClick={() => handleRadioChange('nu_conteaza')}
           >
-            <span className="tile-icon">🌍</span>
+            <span className="tile-icon"><Icon name="globe" size={28} /></span>
             <span className="tile-label">Nu contează</span>
           </button>
         </div>
@@ -136,7 +137,7 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
 
       {/* 2. Accesibilitate la sediu */}
       <div className="section-card">
-        <h3>♿ Accesibilitate la sediu fizic</h3>
+        <h3><Icon name="accessibility" /> Accesibilitate la sediu fizic</h3>
         <p className="section-subtitle">Am nevoie de:</p>
         <div className="checkbox-grid">
           <label className={`custom-checkbox ${prefs.wheelchairRamp ? 'checked' : ''}`}>
@@ -167,7 +168,7 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
 
       {/* 3. Comunicare */}
       <div className="section-card">
-        <h3>💬 Comunicare</h3>
+        <h3><Icon name="message-circle" /> Comunicare</h3>
         <p className="section-subtitle">Canale de comunicare preferate:</p>
         <div className="checkbox-grid">
           <label className={`custom-checkbox ${prefs.writtenCommunication ? 'checked' : ''}`}>
@@ -198,7 +199,7 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
 
       {/* 4. Ajustări specifice */}
       <div className="section-card">
-        <h3>🛠️ Ajustări specifice la locul de muncă</h3>
+        <h3><Icon name="wrench" /> Ajustări specifice la locul de muncă</h3>
         <p className="section-subtitle">Am nevoie de:</p>
         <div className="checkbox-grid">
           <label className={`custom-checkbox ${prefs.adjustableDesk ? 'checked' : ''}`}>
@@ -223,7 +224,7 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
 
       {/* 5. Alte nevoi */}
       <div className="section-card">
-        <h3>📝 Alte cerințe</h3>
+        <h3><Icon name="pencil" /> Alte cerințe</h3>
         <textarea
           id="otherNeeds"
           name="otherNeeds"
@@ -236,7 +237,9 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
       </div>
 
       <button type="submit" className="save-btn" disabled={loading}>
-        <span>{loading ? "⏳ Se generează profilul AI (20-40s)..." : "💾 Salvează Profilul"}</span>
+        {loading
+          ? <><Icon name="loader" className="spin" /> Se generează profilul AI (20-40s)...</>
+          : <><Icon name="save" /> Salvează Profilul</>}
       </button>
     </form>
   );

@@ -123,7 +123,6 @@ html.popup .app-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
   box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
 }
 
@@ -203,6 +202,9 @@ h1 {
 }
 
 .section-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 8px 0;
   font-size: 0.95rem;
   font-weight: 700;
@@ -240,7 +242,7 @@ h1 {
   color: var(--primary);
 }
 
-.tile-icon { font-size: 1.2rem; margin-bottom: 4px; }
+.tile-icon { display: flex; margin-bottom: 4px; }
 .tile-label { font-size: 0.75rem; font-weight: 600; text-align: center; }
 
 /* Custom Checkboxes */
@@ -295,13 +297,13 @@ h1 {
 }
 
 .custom-checkbox.checked .checkbox-indicator::after {
-  content: '✓';
+  /* bifa este iconița check.svg, desenată cu culoarea de fundal (mask) */
+  content: '';
   position: absolute;
-  color: white;
-  font-size: 12px;
-  top: -2px;
-  left: 3px;
-  font-weight: bold;
+  inset: 1px;
+  background-color: white;
+  -webkit-mask: url('./assets/icons/check.svg') center / contain no-repeat;
+  mask: url('./assets/icons/check.svg') center / contain no-repeat;
 }
 
 .checkbox-text { font-size: 0.85rem; font-weight: 500; }
@@ -408,6 +410,29 @@ h1 {
   margin-bottom: 8px;
 }
 
+/* Iconițe (Icon.jsx): preiau culoarea textului, deci și High Contrast */
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: inherit;
+}
+.icon svg { width: 100%; height: 100%; display: block; }
+
+.contrast-toggle-btn,
+.tab-btn,
+.primary-btn,
+.save-btn,
+.error-banner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.error-banner { display: flex; justify-content: flex-start; }
+.questions-list li .icon { margin-top: 2px; }
+
+.icon.spin { animation: spin 0.9s linear infinite; }
+
 /* Componente folosite în JSX care nu aveau stil */
 .match-banner.UNRATED { background: linear-gradient(135deg, #64748b, #475569); }
 
@@ -488,6 +513,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   background: #000000 !important;
   color: #ffffff !important;
   border: 2px solid #ffffff !important;
+}
+
+.app-wrapper.high-contrast .logo-icon {
+  background: #000000;
+  border: 2px solid #ffffff;
+  box-shadow: none;
 }
 
 /* titlurile cu culoare inline (verde/roșu) devin albe */
