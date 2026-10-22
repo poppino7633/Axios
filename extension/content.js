@@ -1,4 +1,3 @@
-
 console.log("[Axios] Extension loaded!");
 
 
@@ -43,6 +42,11 @@ function extractJob() {
   };
 }
 
-console.log("[Axios] Job:", extractJob());
+browser.runtime.onMessage.addListener((message) => {
+  console.log("[Axios] Received message:", message);
 
+  if (message.type === "GET_JOB_DATA") {
+    return Promise.resolve(extractJob());
+  }
+});
 
