@@ -6,7 +6,8 @@
   "description": "AI-powered job accessibility assistant",
   "permissions": [],
   "host_permissions": [
-    "https://www.ejobs.ro/*"
+    "https://www.ejobs.ro/*",
+    "http://127.0.0.0:8000"
   ],
   "content_scripts": [
     {

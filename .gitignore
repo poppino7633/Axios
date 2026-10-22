@@ -150,3 +150,5 @@ vite.config.ts.timestamp-*
 
 # Axios: locally saved user health profile
 ai interface/profile.json
+ai interface/.env
+!ai interface/.env.example

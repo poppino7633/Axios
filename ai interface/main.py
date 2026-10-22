@@ -12,7 +12,7 @@ Three operations, each JSON in -> JSON out, backed by a free Hugging Face hosted
                 unspoken rules and tips, tailored to the user's needs.
 
 Usage:
-    export HF_TOKEN=hf_...            # free token from huggingface.co/settings/tokens
+    put HF_TOKEN=hf_... in ai interface/.env (see .env.example)
     python main.py profile user.json
     python main.py rate job.json [-o out.json]
     python main.py guide job.json [-o out.json]
@@ -28,8 +28,22 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+
+def load_dotenv(path=Path(__file__).with_name(".env")):
+    """Load KEY=value lines from `ai interface/.env` into the environment (real env vars take priority)."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+load_dotenv()
+
 HF_API_URL = "https://router.huggingface.co/v1/chat/completions"
-DEFAULT_MODEL = os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+DEFAULT_MODEL = os.environ.get("HF_MODEL", "openai/gpt-oss-120b")
 PROFILE_PATH = Path(os.environ.get("AXIOS_PROFILE", Path(__file__).with_name("profile.json")))
 
 # Descriptions shorter than this are flagged as vague regardless of what the model says.
@@ -108,7 +122,7 @@ Respond with ONLY a JSON object, no prose, no markdown fences:
 }}"""
 
 
-def call_hf(messages, model=DEFAULT_MODEL, max_tokens=1500, temperature=0.2):
+def call_hf(messages, model=DEFAULT_MODEL, max_tokens=4000, temperature=0.2):
     token = os.environ.get("HF_TOKEN")
     if not token:
         raise RuntimeError("HF_TOKEN environment variable is not set")
@@ -140,6 +154,7 @@ def call_hf(messages, model=DEFAULT_MODEL, max_tokens=1500, temperature=0.2):
 
 def extract_json(text):
     """Pull the first JSON object out of the model's reply (models sometimes wrap it in ``` fences)."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
     try:
         return json.loads(text)
