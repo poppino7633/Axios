@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import OnboardingQuiz from './OnboardingQuiz';
+import Icon from './Icon';
 import { MOCK_RATE_RESULT, MOCK_GUIDE_RESULT } from './mockData';
 import './App.css';
 
@@ -148,7 +149,7 @@ export default function App() {
     <div className={`app-wrapper ${highContrast ? 'high-contrast' : ''} ${dyslexiaFont ? 'dyslexia-font' : ''}`}>
       <header className="app-header">
         <div className="logo-container">
-          <div className="logo-icon">⚡</div>
+          <div className="logo-icon"><Icon name="axios-logo" size={26} /></div>
           <div>
             <h1>Axios UI</h1>
             <span className="subtitle-tag">Accessibility Assistant</span>
@@ -161,7 +162,7 @@ export default function App() {
             aria-pressed={dyslexiaFont}
             aria-label="Comută fontul pentru dislexie"
           >
-            {dyslexiaFont ? '🔤 Font Standard' : '🔤 Font Dislexie'}
+            <Icon name="type" size={16} />{dyslexiaFont ? 'Font Standard' : 'Font Dislexie'}
           </button>
           <button
             onClick={() => setHighContrast(!highContrast)}
@@ -169,7 +170,7 @@ export default function App() {
             aria-pressed={highContrast}
             aria-label="Comută modul High Contrast"
           >
-            {highContrast ? '☀️ Normal' : '👁️ High Contrast'}
+            <Icon name={highContrast ? 'sun' : 'contrast'} size={16} />{highContrast ? 'Normal' : 'High Contrast'}
           </button>
         </div>
       </header>
@@ -180,20 +181,20 @@ export default function App() {
           className={`tab-btn ${activeTab === 'preferences' ? 'active' : ''}`} 
           onClick={() => setActiveTab('preferences')}
         >
-          ⚙️ Setări Profil
+          <Icon name="settings" /> Setări Profil
         </button>
         <button 
           className={`tab-btn ${activeTab === 'analysis' ? 'active' : ''}`} 
           onClick={() => setActiveTab('analysis')}
         >
-          📊 Analiză Job
+          <Icon name="chart-column" /> Analiză Job
         </button>
         {guide && (
           <button 
             className={`tab-btn ${activeTab === 'guide' ? 'active' : ''}`} 
             onClick={() => setActiveTab('guide')}
           >
-            🚀 Ghid Aplicare
+            <Icon name="rocket" /> Ghid Aplicare
           </button>
         )}
       </nav>
@@ -201,7 +202,7 @@ export default function App() {
       <main className="content-area">
         {error && (
           <div className="error-banner">
-            ❌ {error}
+            <Icon name="circle-x" /> {error}
           </div>
         )}
 
@@ -218,7 +219,7 @@ export default function App() {
               <div>
                 {savedProfile && (
                   <div className="section-card active-profile-summary">
-                    <h3>✅ Profil AI Salvat</h3>
+                    <h3><Icon name="circle-check" /> Profil AI Salvat</h3>
                     <p><strong>Nevoie principale:</strong> {savedProfile.needs?.join(", ") || "Fără"}</p>
                     <p><strong>Preferințe:</strong> {savedProfile.preferences?.join(", ") || "Fără"}</p>
                   </div>
@@ -235,7 +236,7 @@ export default function App() {
               <div className="analysis-view">
                 {!savedProfile ? (
                   <div className="section-card info-card">
-                    <h3>⚠️ Niciun profil configurat</h3>
+                    <h3><Icon name="triangle-alert" /> Niciun profil configurat</h3>
                     <p>Completează mai întâi profilul tău de accesibilitate pentru a putea analiza anunțurile de job.</p>
                     <button className="primary-btn" onClick={() => setActiveTab('preferences')}>
                       Creează Profil
@@ -258,17 +259,17 @@ export default function App() {
 
                     {/* Explicație Scor */}
                     <div className="section-card">
-                      <h3>💡 De ce acest scor?</h3>
+                      <h3><Icon name="lightbulb" /> De ce acest scor?</h3>
                       <p>{analysis.rating_explanation}</p>
                     </div>
 
                     {/* Avertisment Anunț Vag */}
                     {analysis.vague && (
                       <div className="section-card warning-card">
-                        <h3>⚠️ Anunț Incomplet / Vag</h3>
+                        <h3><Icon name="triangle-alert" /> Anunț Incomplet / Vag</h3>
                         <ul className="questions-list">
                           {analysis.vague_details?.map((v, i) => (
-                            <li key={i}>🔸 {v}</li>
+                            <li key={i}><Icon name="dot" size={16} /><span>{v}</span></li>
                           ))}
                         </ul>
                       </div>
@@ -277,7 +278,7 @@ export default function App() {
                     {/* Condiții de Lucru */}
                     {analysis.work_conditions?.length > 0 && (
                       <div className="section-card">
-                        <h3>🏢 Condiții de Lucru Detectate</h3>
+                        <h3><Icon name="building" /> Condiții de Lucru Detectate</h3>
                         <div className="findings-grid">
                           {analysis.work_conditions.map((item, idx) => (
                             <div className="finding-card" key={idx}>
@@ -296,25 +297,25 @@ export default function App() {
                     {/* Compatibilități și Conflicte */}
                     {analysis.compatible_with_needs?.length > 0 && (
                       <div className="section-card">
-                        <h3 style={{ color: '#16a34a' }}>✅ Cerințe Îndeplinite</h3>
+                        <h3 style={{ color: '#16a34a' }}><Icon name="circle-check" /> Cerințe Îndeplinite</h3>
                         <ul className="questions-list">
-                          {analysis.compatible_with_needs.map((item, i) => <li key={i}>✓ {item}</li>)}
+                          {analysis.compatible_with_needs.map((item, i) => <li key={i}><Icon name="check-small" size={16} /><span>{item}</span></li>)}
                         </ul>
                       </div>
                     )}
 
                     {analysis.conflicts_with_needs?.length > 0 && (
                       <div className="section-card">
-                        <h3 style={{ color: '#dc2626' }}>❌ Conflicte Detectate</h3>
+                        <h3 style={{ color: '#dc2626' }}><Icon name="circle-x" /> Conflicte Detectate</h3>
                         <ul className="questions-list">
-                          {analysis.conflicts_with_needs.map((item, i) => <li key={i}>✕ {item}</li>)}
+                          {analysis.conflicts_with_needs.map((item, i) => <li key={i}><Icon name="x" size={16} /><span>{item}</span></li>)}
                         </ul>
                       </div>
                     )}
 
                     {/* Buton Generare Ghid */}
                     <button className="primary-btn guide-trigger-btn" onClick={fetchApplicationGuide}>
-                      🚀 Generează Ghid de Aplicare & Interviu
+                      <Icon name="rocket" /> Generează Ghid de Aplicare & Interviu
                     </button>
                   </>
                 ) : (
@@ -330,7 +331,7 @@ export default function App() {
             {activeTab === 'guide' && guide && (
               <div className="guide-view">
                 <div className="section-card">
-                  <h3>📋 Pași de Aplicare</h3>
+                  <h3><Icon name="clipboard-list" /> Pași de Aplicare</h3>
                   <ol className="steps-list">
                     {guide.application_steps?.map((step, idx) => (
                       <li key={idx}>{step}</li>
@@ -339,24 +340,24 @@ export default function App() {
                 </div>
 
                 <div className="section-card">
-                  <h3>👔 Ținută Recomandată</h3>
+                  <h3><Icon name="shirt" /> Ținută Recomandată</h3>
                   <p>{guide.attire}</p>
                 </div>
 
                 {guide.documents_to_prepare?.length > 0 && (
                   <div className="section-card">
-                    <h3>📁 Documente de Pregătit</h3>
+                    <h3><Icon name="folder" /> Documente de Pregătit</h3>
                     <ul className="questions-list">
-                      {guide.documents_to_prepare.map((doc, idx) => <li key={idx}>📄 {doc}</li>)}
+                      {guide.documents_to_prepare.map((doc, idx) => <li key={idx}><Icon name="file-text" size={16} /><span>{doc}</span></li>)}
                     </ul>
                   </div>
                 )}
 
                 {guide.questions_to_ask_employer?.length > 0 && (
                   <div className="section-card">
-                    <h3>❓ Întrebări de pus Angajatorului</h3>
+                    <h3><Icon name="circle-help" /> Întrebări de pus Angajatorului</h3>
                     <ul className="questions-list">
-                      {guide.questions_to_ask_employer.map((q, idx) => <li key={idx}>👉 {q}</li>)}
+                      {guide.questions_to_ask_employer.map((q, idx) => <li key={idx}><Icon name="arrow-right" size={16} /><span>{q}</span></li>)}
                     </ul>
                   </div>
                 )}
