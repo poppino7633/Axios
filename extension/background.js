@@ -1,4 +1,3 @@
-
 const AXIOS_SERVER = "http://100.114.26.88:8765";
 
 // --------------------------------------------------
@@ -33,8 +32,8 @@ async function axiosRequest(path, body = null) {
 
   const data = await response.json();
 
-  if (!response.ok || data.error) {
-    throw new Error(data.error ?? `HTTP ${response.status}`);
+  if (!response.ok || data?.error) {
+    throw new Error(data?.error ?? `HTTP ${response.status}`);
   }
 
   return data;
@@ -73,7 +72,6 @@ async function cacheKey(kind, job, profile) {
 
   const url = new URL(job.url);
 
-  // Remove query parameters and fragments.
   const page = `${url.origin}${url.pathname}`;
 
   const hash = await sha256({
@@ -188,7 +186,70 @@ async function cachedRequest(
 }
 
 // --------------------------------------------------
-// REACT UI MESSAGE HANDLERS
+// JOB SEARCH SCREENING
+// --------------------------------------------------
+
+async function screenJobs(jobs) {
+  if (!Array.isArray(jobs)) {
+    throw new Error("Invalid jobs list");
+  }
+
+  if (jobs.length === 0) return [];
+
+  const { profile } = await browser.storage.local.get("profile");
+
+  if (!profile) {
+    throw new Error("Create an accessibility profile first");
+  }
+
+  const normalizedJobs = jobs.map(({ title, company }) => ({
+    title,
+    company
+  }));
+
+  const key = `screen:${await sha256({
+    jobs: normalizedJobs,
+    profile
+  })}`;
+
+  const cached = await readCache(key);
+
+  if (cached !== null) {
+    console.log("[Axios] Screen cache hit");
+    return cached;
+  }
+
+  if (inFlight.has(key)) {
+    return inFlight.get(key);
+  }
+
+  const request = (async () => {
+    const ratings = await axiosRequest("/screen", {
+      jobs: normalizedJobs,
+      profile
+    });
+
+    if (
+      !Array.isArray(ratings) ||
+      ratings.length !== jobs.length ||
+      !ratings.every(rating => [1, 2, 3].includes(rating))
+    ) {
+      throw new Error("Invalid screening response from server");
+    }
+
+    await writeCache(key, ratings);
+
+    return ratings;
+  })().finally(() => {
+    inFlight.delete(key);
+  });
+
+  inFlight.set(key, request);
+
+  return request;
+}
+// --------------------------------------------------
+// REACT UI AND CONTENT SCRIPT MESSAGE HANDLERS
 // --------------------------------------------------
 
 browser.runtime.onMessage.addListener(async message => {
@@ -243,8 +304,11 @@ browser.runtime.onMessage.addListener(async message => {
       );
     }
 
+    case "SCREEN_JOBS": {
+      return screenJobs(message.jobs);
+    }
+
     default:
       return undefined;
   }
 });
-

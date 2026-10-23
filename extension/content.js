@@ -1,4 +1,3 @@
-
 (() => {
   // Prevent duplicate listeners when the popup reinjects the script.
   if (globalThis.__axiosContentLoaded) return;
@@ -6,6 +5,10 @@
 
   const AXIOS_MIN_DESCRIPTION_LENGTH = 80;
   const AXIOS_MAX_DESCRIPTION_LENGTH = 12000;
+
+  // --------------------------------------------------
+  // TEXT HELPERS
+  // --------------------------------------------------
 
   function cleanText(value) {
     if (value == null) return null;
@@ -308,75 +311,69 @@
     });
   }
 
+  function extractBestJobs() {
+    const title = firstText([
+      'h2 a[href*="/job/"]',
+      'h2 a[href*="/loc-de-munca/"]',
+      "h2",
+      "h1"
+    ]);
 
-function extractBestJobs() {
-  // BestJobs uses h2 instead of h1 for the job title.
-  const title = firstText([
-    'h2 a[href*="/job/"]',
-    'h2 a[href*="/loc-de-munca/"]',
-    'h2',
-    'h1'
-  ]);
+    const company = firstText([
+      'h3 a[href*="/company-profile/"]',
+      'a[href*="/company-profile/"]',
+      '[class*="company-name"]',
+      '[class*="companyName"]'
+    ]);
 
-  // Company profile link is present near the job header.
-  const company = firstText([
-    'h3 a[href*="/company-profile/"]',
-    'a[href*="/company-profile/"]',
-    '[class*="company-name"]',
-    '[class*="companyName"]'
-  ]);
+    const description = firstDescription([
+      ".job-description",
+      ".prose.job-description",
+      '[class*="job-description"]',
+      '[class*="jobDescription"]'
+    ]);
 
-  // Job description has a dedicated, stable CSS class.
-  const description = firstDescription([
-    '.job-description',
-    '.prose.job-description',
-    '[class*="job-description"]',
-    '[class*="jobDescription"]'
-  ]);
+    const heading = document.querySelector(
+      'h2 a[href*="/job/"], h2 a[href*="/loc-de-munca/"]'
+    )?.closest("h2");
 
-  // Location and salary are displayed near the job heading.
-  const heading = document.querySelector(
-    'h2 a[href*="/job/"], h2 a[href*="/loc-de-munca/"]'
-  )?.closest("h2");
+    const header = heading?.parentElement;
 
-  const header = heading?.parentElement;
+    let location = null;
+    let salary = null;
 
-  let location = null;
-  let salary = null;
+    if (header) {
+      const headerText = cleanText(header.innerText);
 
-  if (header) {
-    const headerText = cleanText(header.innerText);
+      const salaryMatch = headerText?.match(
+        /(?:confidential salary|salariu confidențial|[\d.,]+\s*(?:lei|ron|eur|€))/i
+      );
 
-    const salaryMatch = headerText?.match(
-      /(?:confidential salary|salariu confidențial|[\d.,]+\s*(?:lei|ron|eur|€))/i
-    );
+      salary = salaryMatch?.[0] || null;
 
-    salary = salaryMatch?.[0] || null;
+      const buttons = header.querySelectorAll("button");
 
-    // Location is commonly rendered inside a button.
-    const buttons = header.querySelectorAll("button");
+      for (const button of buttons) {
+        const text = cleanText(button.innerText);
 
-    for (const button of buttons) {
-      const text = cleanText(button.innerText);
-
-      if (
-        text &&
-        /București|Bucuresti|România|Romania|Cluj|Iași|Iasi|Timișoara|Timisoara|Brașov|Brasov|Constanța|Constanta/i.test(text)
-      ) {
-        location = text;
-        break;
+        if (
+          text &&
+          /București|Bucuresti|România|Romania|Cluj|Iași|Iasi|Timișoara|Timisoara|Brașov|Brasov|Constanța|Constanta/i.test(text)
+        ) {
+          location = text;
+          break;
+        }
       }
     }
-  }
 
-  return normalizeJob({
-    title,
-    company,
-    location,
-    salary,
-    description
-  });
-}
+    return normalizeJob({
+      title,
+      company,
+      location,
+      salary,
+      description
+    });
+  }
 
   // --------------------------------------------------
   // GENERIC EXTRACTION
@@ -425,7 +422,6 @@ function extractBestJobs() {
   function extractJob() {
     const hostname = window.location.hostname.toLowerCase();
 
-    // Prefer structured data where available.
     const structured = extractJSONLDJob();
 
     if (structured) {
@@ -451,7 +447,6 @@ function extractBestJobs() {
       job = extractBestJobs();
     }
 
-    // Fall back to generic extraction.
     if (!job?.title || !job?.description) {
       const generic = extractGenericJob();
 
@@ -466,8 +461,6 @@ function extractBestJobs() {
       }
     }
 
-    // Some job boards render descriptions in dynamic panels or unlabelled sections.
-    // Do not scrape the whole page: navigation/sidebar content would pollute the AI input.
     if (
       !job?.description ||
       job.description.length < AXIOS_MIN_DESCRIPTION_LENGTH
@@ -510,15 +503,10 @@ function extractBestJobs() {
     return job;
   }
 
-  // --------------------------------------------------
-  // EXTENSION MESSAGING
-  // --------------------------------------------------
-
   async function extractJobWithRetry() {
     let job = extractJob();
     if (job) return job;
 
-    // LinkedIn and BestJobs often load job details asynchronously.
     for (let attempt = 0; attempt < 8; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 350));
       job = extractJob();
@@ -528,12 +516,402 @@ function extractBestJobs() {
     return null;
   }
 
+  // --------------------------------------------------
+  // SEARCH RESULT SCREENING (eJobs)
+  // --------------------------------------------------
+
+  const SEARCH_SELECTORS = {
+    card: ".job-card",
+    title: ".job-card-content-middle__title a",
+    company: ".job-card-content-middle__info--darker a"
+  };
+
+  const SCREEN_LABELS = {
+    1: "Potential conflict",
+    2: "Uncertain",
+    3: "No obvious conflict"
+  };
+
+  const SCREEN_STYLES = {
+    1: {
+      background: "#ffe5e5",
+      color: "#8f2020",
+      border: "1px solid #f3aaaa"
+    },
+    2: {
+      background: "#fff1cf",
+      color: "#795300",
+      border: "1px solid #ebce83"
+    },
+    3: {
+      background: "#dff4e7",
+      color: "#17643a",
+      border: "1px solid #9dd7b2"
+    }
+  };
+
+  let screenTimer = null;
+  let screenRunning = false;
+  let screenRequestedAgain = false;
+  let lastScreenSignature = null;
+  let lastScreenProfile = null;
+  let lastScreenRatings = null;
+  let lastScreenElements = [];
+  let lastScreenJobs = [];
+
+  function isEJobsSite() {
+    const hostname = location.hostname.toLowerCase();
+
+    return hostname === "ejobs.ro" ||
+      hostname.endsWith(".ejobs.ro");
+  }
+
+  function extractSearchJobs() {
+    const jobs = [];
+    const elements = [];
+
+    const cards = document.querySelectorAll(
+      SEARCH_SELECTORS.card
+    );
+
+    for (const card of cards) {
+      const titleElement = card.querySelector(
+        SEARCH_SELECTORS.title
+      );
+
+      const companyElement = card.querySelector(
+        SEARCH_SELECTORS.company
+      );
+
+      if (!titleElement || !companyElement) continue;
+
+      const title = cleanText(titleElement.textContent);
+      const company = cleanText(companyElement.textContent);
+
+      if (!title || !company) continue;
+
+      jobs.push({ title, company });
+      elements.push(titleElement);
+    }
+
+    return { jobs, elements };
+  }
+
+  function removeScreenBadges() {
+    document.querySelectorAll(".axios-screen-badge")
+      .forEach(badge => badge.remove());
+  }
+
+  function createScreenBadge(rating) {
+    const badge = document.createElement("span");
+    const style = SCREEN_STYLES[rating];
+
+    badge.className = "axios-screen-badge";
+    badge.dataset.axiosRating = String(rating);
+
+    badge.textContent = `Axios: ${SCREEN_LABELS[rating]}`;
+
+    badge.setAttribute(
+      "aria-label",
+      `Axios preliminary accessibility screening: ${SCREEN_LABELS[rating]}`
+    );
+
+    badge.title =
+      "Preliminary screening based only on job title and company. " +
+      "Open the job for a detailed assessment.";
+
+    Object.assign(badge.style, {
+      display: "inline-block",
+      verticalAlign: "middle",
+      marginLeft: "8px",
+      marginTop: "4px",
+      padding: "4px 8px",
+      borderRadius: "6px",
+      fontSize: "12px",
+      lineHeight: "1.4",
+      fontWeight: "600",
+      whiteSpace: "normal",
+      ...style
+    });
+
+    return badge;
+  }
+
+  function injectScreenRatings(elements, ratings) {
+    if (elements.length !== ratings.length) {
+      console.error(
+        "[Axios] Rating count does not match job count"
+      );
+      return;
+    }
+
+    for (let i = 0; i < ratings.length; i++) {
+      const titleElement = elements[i];
+      const rating = ratings[i];
+
+      if (!titleElement?.isConnected) continue;
+      if (![1, 2, 3].includes(rating)) continue;
+
+      const heading = titleElement.closest(
+        ".job-card-content-middle__title"
+      );
+
+      if (!heading) continue;
+
+      heading.querySelectorAll(".axios-screen-badge")
+        .forEach(badge => badge.remove());
+
+      const badge = createScreenBadge(rating);
+      heading.appendChild(badge);
+    }
+  }
+
+  function showScreenLoading(elements) {
+    for (const titleElement of elements) {
+      if (!titleElement?.isConnected) continue;
+
+      const heading = titleElement.closest(
+        ".job-card-content-middle__title"
+      );
+
+      if (!heading) continue;
+
+      heading.querySelectorAll(".axios-screen-badge")
+        .forEach(badge => badge.remove());
+
+      const badge = document.createElement("span");
+      badge.className = "axios-screen-badge";
+      badge.textContent = "Axios: analyzing…";
+      badge.setAttribute("role", "status");
+
+      Object.assign(badge.style, {
+        display: "inline-block",
+        marginLeft: "8px",
+        padding: "4px 8px",
+        borderRadius: "6px",
+        background: "#ece7f7",
+        color: "#49336d",
+        fontSize: "12px",
+        fontWeight: "600"
+      });
+
+      heading.appendChild(badge);
+    }
+  }
+
+  function screenSignature(jobs) {
+    return JSON.stringify(jobs);
+  }
+
+  async function runSearchScreening() {
+    if (!isEJobsSite()) return;
+
+    if (screenRunning) {
+      screenRequestedAgain = true;
+      return;
+    }
+
+    screenRunning = true;
+
+    try {
+      const { jobs, elements } = extractSearchJobs();
+
+      if (jobs.length === 0) {
+        lastScreenSignature = null;
+        lastScreenRatings = null;
+        lastScreenElements = [];
+        lastScreenJobs = [];
+        return;
+      }
+
+      const { profile } = await browser.storage.local.get("profile");
+
+      if (!profile) {
+        removeScreenBadges();
+        lastScreenSignature = null;
+        lastScreenProfile = null;
+        lastScreenRatings = null;
+        return;
+      }
+
+      const signature = screenSignature(jobs);
+      const profileSignature = JSON.stringify(profile);
+
+      // If the same jobs were already screened, just restore
+      // badges on DOM elements replaced by eJobs.
+      if (
+        signature === lastScreenSignature &&
+        profileSignature === lastScreenProfile &&
+        lastScreenRatings
+      ) {
+        injectScreenRatings(elements, lastScreenRatings);
+        lastScreenElements = elements;
+        return;
+      }
+
+      showScreenLoading(elements);
+
+      console.log("[Axios] Screening jobs:", jobs);
+
+      const ratings = await browser.runtime.sendMessage({
+        type: "SCREEN_JOBS",
+        jobs
+      });
+
+      if (
+        !Array.isArray(ratings) ||
+        ratings.length !== jobs.length
+      ) {
+        throw new Error("Invalid screening response");
+      }
+
+      // eJobs may have changed the results while the API
+      // request was running. Do not attach old scores to
+      // a different set of jobs.
+      const current = extractSearchJobs();
+
+      if (
+        screenSignature(current.jobs) !== signature
+      ) {
+        screenRequestedAgain = true;
+        return;
+      }
+
+      lastScreenSignature = signature;
+      lastScreenProfile = profileSignature;
+      lastScreenRatings = ratings;
+      lastScreenJobs = jobs;
+      lastScreenElements = current.elements;
+
+      injectScreenRatings(current.elements, ratings);
+
+      console.log("[Axios] Screening complete:", ratings);
+    } catch (error) {
+      console.error("[Axios] Screening failed:", error);
+      removeScreenBadges();
+      lastScreenSignature = null;
+      lastScreenRatings = null;
+    } finally {
+      screenRunning = false;
+
+      if (screenRequestedAgain) {
+        screenRequestedAgain = false;
+        scheduleSearchScreening();
+      }
+    }
+  }
+
+  function scheduleSearchScreening() {
+    if (!isEJobsSite()) return;
+
+    clearTimeout(screenTimer);
+
+    screenTimer = setTimeout(() => {
+      runSearchScreening();
+    }, 500);
+  }
+
+  function initializeSearchScreening() {
+    if (!isEJobsSite()) return;
+
+    scheduleSearchScreening();
+
+    const observer = new MutationObserver(mutations => {
+      // Ignore changes consisting exclusively of our badges.
+      const relevant = mutations.some(mutation => {
+        if (mutation.type !== "childList") return false;
+
+        const changedNodes = [
+          ...mutation.addedNodes,
+          ...mutation.removedNodes
+        ];
+
+        return changedNodes.some(node => {
+          if (node.nodeType !== Node.ELEMENT_NODE) {
+            return false;
+          }
+
+          if (node.classList?.contains("axios-screen-badge")) {
+            return false;
+          }
+
+          // Re-screen only when job cards or their content change.
+          return (
+            node.matches?.(
+              ".job-card, .job-card-content, " +
+              ".job-card-content-middle, " +
+              ".job-card-content-middle__title, " +
+              ".job-card-content-middle__info--darker"
+            ) ||
+            node.querySelector?.(".job-card") !== null ||
+            node.closest?.(".job-card") !== null
+          );
+        });
+      });
+
+      if (relevant) {
+        scheduleSearchScreening();
+      }
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    browser.storage.onChanged.addListener(
+      (changes, areaName) => {
+        if (
+          areaName === "local" &&
+          Object.prototype.hasOwnProperty.call(
+            changes,
+            "profile"
+          )
+        ) {
+          lastScreenSignature = null;
+          lastScreenProfile = null;
+          lastScreenRatings = null;
+          scheduleSearchScreening();
+        }
+      }
+    );
+  }
+
+  // --------------------------------------------------
+  // EXTENSION MESSAGING
+  // --------------------------------------------------
+
   browser.runtime.onMessage.addListener(message => {
     if (message.type === "GET_JOB_DATA") {
       return extractJobWithRetry();
     }
 
+    if (message.type === "GET_SEARCH_JOBS") {
+      return Promise.resolve(extractSearchJobs().jobs);
+    }
+
+    if (message.type === "REFRESH_SEARCH_SCREENING") {
+      lastScreenSignature = null;
+      lastScreenRatings = null;
+      scheduleSearchScreening();
+
+      return Promise.resolve({ success: true });
+    }
+
     return undefined;
   });
-})();
 
+  // --------------------------------------------------
+  // INITIALIZATION
+  // --------------------------------------------------
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      initializeSearchScreening,
+      { once: true }
+    );
+  } else {
+    initializeSearchScreening();
+  }
+})();
