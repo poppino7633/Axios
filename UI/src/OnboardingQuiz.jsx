@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Icon from './Icon';
 
 export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
   const [prefs, setPrefs] = useState({
@@ -7,13 +8,14 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
     dedicatedElevator: false,
     adaptedRestroom: false,
     dedicatedParking: false,
-    writtenCommunication: false,
-    noUnannouncedCalls: false,
-    lowSensoryEnvironment: false,
-    screenReader: false,
+    directCommunication: false,
+    quietSpace1on1: false,
+    writtenChatEmail: false,
+    processingTime: false,
     adjustableDesk: false,
     ergonomicChair: false,
     largeMonitors: false,
+    visualAssistant: false,
     otherNeeds: ''
   });
 
@@ -48,14 +50,15 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
         prefs.dedicatedParking && "nevoie de parcare dedicată"
       ].filter(Boolean).join(", ") || "Fără restricții fizice severe.",
       requirements: [
-        prefs.writtenCommunication && "comunicare predominant în scris",
-        prefs.noUnannouncedCalls && "fără apeluri neanunțate",
-        prefs.lowSensoryEnvironment && "mediu de lucru low-sensory",
-        prefs.screenReader && "suport screen reader",
+        prefs.directCommunication && "Instrucțiuni scrise și directe: nevoie de sarcini scrise în detaliu și comunicare 100% directă",
+        prefs.quietSpace1on1 && "Spațiu liniștit / Discuții 1-la-1: nevoie de spații fără zgomot de fundal și comunicare individuală",
+        prefs.writtenChatEmail && "Comunicare în scris (Chat/E-mail): prefer comunicarea pe chat/e-mail în locul apelurilor neanunțate",
+        prefs.processingTime && "Timp de procesare & Înțelegere ritm: nevoie de scurt timp de gândire înainte de a răspunde",
         prefs.adjustableDesk && "birou reglabil",
         prefs.ergonomicChair && "scaun ergonomic",
-        prefs.largeMonitors && "monitoare mari"
-      ].filter(Boolean).join(", ") || "Fără cerințe specifice.",
+        prefs.largeMonitors && "monitoare mari",
+        prefs.visualAssistant && "asistent vizual"
+      ].filter(Boolean).join(" | ") || "Fără cerințe specifice.",
       extras: prefs.otherNeeds || "Niciuna"
     };
 
@@ -72,8 +75,8 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
         // Fallback local pentru teste în browser fără extensie încărcată
         await new Promise(resolve => setTimeout(resolve, 1500));
         processedProfile = {
-          needs: ["Exclusive remote work", "Screen reader support"],
-          preferences: ["Flexible schedule"],
+          needs: ["Exclusive remote work", "Visual assistant support"],
+          preferences: ["Direct communication", "Quiet environment"],
           language: "Romanian"
         };
       }
@@ -97,38 +100,38 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
 
       {error && (
         <div className="error-banner">
-          ⚠️ Eroare la salvarea profilului: {error}
+          <Icon name="triangle-alert" /> Eroare la salvarea profilului: {error}
         </div>
       )}
 
       {/* 1. Regim de lucru */}
       <div className="section-card">
-        <h3>💼 Regim de lucru</h3>
+        <h3><Icon name="briefcase" /> Regim de lucru</h3>
         <div className="radio-tile-group">
           <button
             type="button"
             className={`radio-tile ${prefs.workMode === 'remote' ? 'active' : ''}`}
             onClick={() => handleRadioChange('remote')}
           >
-            <span className="tile-icon">🏠</span>
+            <span className="tile-icon"><Icon name="house" size={28} /></span>
             <span className="tile-label">Exclusive Remote</span>
           </button>
-          
+
           <button
             type="button"
             className={`radio-tile ${prefs.workMode === 'hybrid' ? 'active' : ''}`}
             onClick={() => handleRadioChange('hybrid')}
           >
-            <span className="tile-icon">🏢</span>
+            <span className="tile-icon"><Icon name="building" size={28} /></span>
             <span className="tile-label">Hybrid</span>
           </button>
-          
+
           <button
             type="button"
             className={`radio-tile ${prefs.workMode === 'nu_conteaza' ? 'active' : ''}`}
             onClick={() => handleRadioChange('nu_conteaza')}
           >
-            <span className="tile-icon">🌍</span>
+            <span className="tile-icon"><Icon name="globe" size={28} /></span>
             <span className="tile-label">Nu contează</span>
           </button>
         </div>
@@ -136,7 +139,7 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
 
       {/* 2. Accesibilitate la sediu */}
       <div className="section-card">
-        <h3>♿ Accesibilitate la sediu fizic</h3>
+        <h3><Icon name="accessibility" /> Accesibilitate la sediu fizic</h3>
         <p className="section-subtitle">Am nevoie de:</p>
         <div className="checkbox-grid">
           <label className={`custom-checkbox ${prefs.wheelchairRamp ? 'checked' : ''}`}>
@@ -167,38 +170,38 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
 
       {/* 3. Comunicare */}
       <div className="section-card">
-        <h3>💬 Comunicare</h3>
-        <p className="section-subtitle">Canale de comunicare preferate:</p>
+        <h3><Icon name="message-circle" /> Comunicare</h3>
+        <p className="section-subtitle">Canale de comunicare și interacțiune preferate:</p>
         <div className="checkbox-grid">
-          <label className={`custom-checkbox ${prefs.writtenCommunication ? 'checked' : ''}`}>
-            <input type="checkbox" name="writtenCommunication" checked={prefs.writtenCommunication} onChange={handleCheckboxChange} />
+          <label className={`custom-checkbox ${prefs.directCommunication ? 'checked' : ''}`}>
+            <input type="checkbox" name="directCommunication" checked={prefs.directCommunication} onChange={handleCheckboxChange} />
             <span className="checkbox-indicator"></span>
-            <span className="checkbox-text">Comunicare predominant în scris</span>
+            <span className="checkbox-text"><strong>Instrucțiuni scrise și directe:</strong> Am nevoie de sarcini scrise în detaliu și comunicare 100% directă.</span>
           </label>
 
-          <label className={`custom-checkbox ${prefs.noUnannouncedCalls ? 'checked' : ''}`}>
-            <input type="checkbox" name="noUnannouncedCalls" checked={prefs.noUnannouncedCalls} onChange={handleCheckboxChange} />
+          <label className={`custom-checkbox ${prefs.quietSpace1on1 ? 'checked' : ''}`}>
+            <input type="checkbox" name="quietSpace1on1" checked={prefs.quietSpace1on1} onChange={handleCheckboxChange} />
             <span className="checkbox-indicator"></span>
-            <span className="checkbox-text">Fără apeluri neanunțate</span>
+            <span className="checkbox-text"><strong>Spațiu liniștit / Discuții 1-la-1:</strong> Am nevoie de spații fără zgomot de fundal și prefer comunicarea individuală.</span>
           </label>
 
-          <label className={`custom-checkbox ${prefs.lowSensoryEnvironment ? 'checked' : ''}`}>
-            <input type="checkbox" name="lowSensoryEnvironment" checked={prefs.lowSensoryEnvironment} onChange={handleCheckboxChange} />
+          <label className={`custom-checkbox ${prefs.writtenChatEmail ? 'checked' : ''}`}>
+            <input type="checkbox" name="writtenChatEmail" checked={prefs.writtenChatEmail} onChange={handleCheckboxChange} />
             <span className="checkbox-indicator"></span>
-            <span className="checkbox-text">Mediu de lucru low-sensory</span>
+            <span className="checkbox-text"><strong>Comunicare în scris (Chat/E-mail):</strong> Prefer comunicarea pe chat sau e-mail în locul apelurilor telefonice/video neanunțate.</span>
           </label>
 
-          <label className={`custom-checkbox ${prefs.screenReader ? 'checked' : ''}`}>
-            <input type="checkbox" name="screenReader" checked={prefs.screenReader} onChange={handleCheckboxChange} />
+          <label className={`custom-checkbox ${prefs.processingTime ? 'checked' : ''}`}>
+            <input type="checkbox" name="processingTime" checked={prefs.processingTime} onChange={handleCheckboxChange} />
             <span className="checkbox-indicator"></span>
-            <span className="checkbox-text">Suport Screen Reader</span>
+            <span className="checkbox-text"><strong>Timp de procesare & Înțelegere ritm:</strong> Am nevoie de scurt timp de gândire înainte de a răspunde și de înțelegere dacă îmi pierd firul ideilor sau am o vorbire mai impulsivă.</span>
           </label>
         </div>
       </div>
 
       {/* 4. Ajustări specifice */}
       <div className="section-card">
-        <h3>🛠️ Ajustări specifice la locul de muncă</h3>
+        <h3><Icon name="wrench" /> Ajustări specifice la locul de muncă</h3>
         <p className="section-subtitle">Am nevoie de:</p>
         <div className="checkbox-grid">
           <label className={`custom-checkbox ${prefs.adjustableDesk ? 'checked' : ''}`}>
@@ -218,12 +221,18 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
             <span className="checkbox-indicator"></span>
             <span className="checkbox-text">Monitoare mari / speciale</span>
           </label>
+
+          <label className={`custom-checkbox ${prefs.visualAssistant ? 'checked' : ''}`}>
+            <input type="checkbox" name="visualAssistant" checked={prefs.visualAssistant} onChange={handleCheckboxChange} />
+            <span className="checkbox-indicator"></span>
+            <span className="checkbox-text">Asistent vizual</span>
+          </label>
         </div>
       </div>
 
       {/* 5. Alte nevoi */}
       <div className="section-card">
-        <h3>📝 Alte cerințe</h3>
+        <h3><Icon name="pencil" /> Alte cerințe</h3>
         <textarea
           id="otherNeeds"
           name="otherNeeds"
@@ -236,7 +245,9 @@ export default function OnboardingQuiz({ initialProfile, onSaveProfile }) {
       </div>
 
       <button type="submit" className="save-btn" disabled={loading}>
-        <span>{loading ? "⏳ Se generează profilul AI (20-40s)..." : "💾 Salvează Profilul"}</span>
+        {loading
+          ? <><Icon name="loader" className="spin" /> Se generează profilul AI (20-40s)...</>
+          : <><Icon name="save" /> Salvează Profilul</>}
       </button>
     </form>
   );
