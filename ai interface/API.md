@@ -198,6 +198,41 @@ Every step is one short instruction (about 15 words or fewer). Legal rights are 
 
 ---
 
+## `POST /screen` (experimental)
+
+A quick, lenient first pass over a list of jobs, e.g. a search results page, before calling `/rate` on any of them. The AI sees only each job's title and company, and fails a job only when the kind of work obviously clashes with a need (e.g. reduced mobility → warehouse or construction work).
+
+**Request body:**
+- `jobs`: a list of `{ "title", "company" }` objects. Other fields are ignored.
+- `profile`: the object `/profile` returned, unchanged.
+
+```json
+{
+  "jobs": [
+    { "title": "Junior Python Developer", "company": "Example SRL" },
+    { "title": "Muncitor necalificat depozit", "company": "Logistic Express" },
+    { "title": "Operator call center", "company": "Teleperformance" }
+  ],
+  "profile": { "needs": ["no heavy lifting", "mostly seated work"], "preferences": [], "language": "English" }
+}
+```
+
+**Response:** a list with one rating per job, in the same order as `jobs`:
+
+```json
+[3, 1, 2]
+```
+
+| Rating | Meaning |
+|---|---|
+| `1` | Fail: this kind of work clashes with a need. |
+| `2` | Not confident: the title alone isn't enough to tell. |
+| `3` | Pass: nothing about this kind of work clashes. |
+
+An empty `jobs` list returns `[]` without calling the AI. A typical call for 5 jobs takes about 3–5 s. If the AI reply can't be parsed, the response is an `{"error": ...}` object instead of a list.
+
+---
+
 ## Errors
 
 Every error has the same shape:

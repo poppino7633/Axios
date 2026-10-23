@@ -9,6 +9,7 @@ Endpoints (all JSON in / JSON out):
     POST /profile   -> body: user's needs input        -> condensed profile (the extension stores it)
     POST /rate      -> body: {"job": {...}, "profile": {...}} -> rating, work conditions, vagueness flag
     POST /guide     -> body: {"job": {...}, "profile": {...}} -> application guide
+    POST /screen    -> body: {"jobs": [{"title", "company"}, ...], "profile": {...}} -> [1-3, ...] (experimental)
 
 The server stores nothing; the profile lives in the extension.
 
@@ -40,10 +41,20 @@ def with_job_and_profile(handler):
     return run
 
 
+def with_jobs_and_profile(handler):
+    """Adapt a (jobs, profile) function to a {"jobs": [...], "profile": ...} request body."""
+    def run(data):
+        if not isinstance(data.get("jobs"), list):
+            raise RuntimeError('request body must be {"jobs": [{"title": ..., "company": ...}, ...], "profile": {...}}')
+        return handler(data["jobs"], data.get("profile"))
+    return run
+
+
 POST_ROUTES = {
     "/profile": main.build_profile,
     "/rate": with_job_and_profile(main.rate_job),
     "/guide": with_job_and_profile(main.application_guide),
+    "/screen": with_jobs_and_profile(main.screen_jobs),
 }
 
 

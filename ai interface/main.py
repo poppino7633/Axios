@@ -1,6 +1,6 @@
 """Axios AI interface.
 
-Three operations, each JSON in -> JSON out, backed by whichever LLM provider is set in .env
+Four operations, each JSON in -> JSON out, backed by whichever LLM provider is set in .env
 (see providers.py):
 
   1. profile  - takes the user's description of their disabilities / difficulties / requirements
@@ -11,6 +11,9 @@ Three operations, each JSON in -> JSON out, backed by whichever LLM provider is 
                 flag if the description is too vague to judge.
   3. guide    - takes a job listing plus the profile and returns a short step-by-step application
                 guide; only the sections this person needs are filled, the rest are null.
+  4. screen   - (experimental) takes a list of {"title", "company"} pairs plus the profile and makes a
+                quick, lenient first-pass guess per job: 1 = fail, 2 = not confident, 3 = pass.
+                Returns a list of ratings in the same order as the jobs.
 
 Every reply is checked against a JSON schema: Claude enforces it server-side, and the shape checks
 below repair anything another provider gets wrong, so the extension always gets the documented shape.
@@ -20,6 +23,7 @@ Usage:
     python main.py profile user.json -o profile.json
     python main.py rate job.json --profile profile.json [-o out.json]
     python main.py guide job.json --profile profile.json [-o out.json]
+    python main.py screen jobs.json --profile profile.json [-o out.json]
     cat job.json | python main.py rate --profile profile.json
 """
 
@@ -115,6 +119,25 @@ Respond with ONLY this JSON (each section: 2-4 steps, or null):
   "questions_to_ask_employer": [string]  // max 3, about this person's needs
 }}"""
 
+SCREEN_PROMPT = """Make a quick first-pass guess, from the title and company only, of whether each job could
+suit a person with these needs:
+{profile}
+
+Rate each job:
+- 1 = fail: the kind of work itself clearly clashes with a need (e.g. reduced mobility -> warehouse,
+  construction, courier or other blue-collar physical work; hearing loss -> call centre).
+- 3 = pass: nothing about this kind of work clashes with any need.
+- 2 = not confident: the title is unclear, or it depends on details a title doesn't show.
+This is a very lenient filter: only fail a job when the clash is obvious. Never fail it for missing
+information (salary, schedule, location).
+
+The input is a JSON list of jobs. Return exactly one rating per job, in the same order.
+Respond with ONLY this JSON:
+{{"ratings": [integer]}}"""
+
+# Rating used for a job the model skipped or rated with something other than 1-3.
+SCREEN_UNSURE = 2
+
 
 # JSON schemas for the replies (enforced by providers that support it, e.g. Claude).
 STRINGS = {"type": "array", "items": {"type": "string"}}
@@ -137,6 +160,10 @@ RATE_SCHEMA = object_schema({
     "conflicts_with_needs": STRINGS,
     "vague": {"type": "boolean"},
     "vague_details": STRINGS,
+})
+
+SCREEN_SCHEMA = object_schema({
+    "ratings": {"type": "array", "items": {"type": "integer", "enum": [1, 2, 3]}},
 })
 
 GUIDE_SCHEMA = object_schema({
@@ -261,12 +288,34 @@ def application_guide(job, profile, model=None):
     return result
 
 
+# --- 4. screen (experimental) ----------------------------------------------
+
+def screen_jobs(jobs, profile, model=None):
+    """Quick 1-3 pass/fail guess per job from its title and company; returns ratings in input order."""
+    check_profile(profile)
+    if not isinstance(jobs, list) or not all(isinstance(job, dict) for job in jobs):
+        raise RuntimeError('jobs must be a list of objects, e.g. [{"title": "...", "company": "..."}]')
+    if not jobs:
+        return []
+    listing = [{"title": job.get("title"), "company": job.get("company")} for job in jobs]
+    prompt = SCREEN_PROMPT.format(profile=profile_prefix(profile))
+    result = ask(prompt, listing, model=model, task="screen", schema=SCREEN_SCHEMA)
+    if "error" in result:
+        return result
+
+    ratings = result.get("ratings") if isinstance(result.get("ratings"), list) else []
+    # one rating per job, whatever count the model sent
+    ratings = (ratings + [SCREEN_UNSURE] * len(jobs))[:len(jobs)]
+    return [r if r in (1, 2, 3) and not isinstance(r, bool) else SCREEN_UNSURE for r in ratings]
+
+
 # --- CLI --------------------------------------------------------------------
 
 COMMANDS = {
     "profile": build_profile,
     "rate": rate_job,
     "guide": application_guide,
+    "screen": screen_jobs,
 }
 
 
@@ -275,7 +324,7 @@ def main():
     parser.add_argument("command", choices=COMMANDS, help="operation to run")
     parser.add_argument("input", nargs="?", help="input JSON file (default: stdin)")
     parser.add_argument("-o", "--output", help="output JSON file (default: stdout)")
-    parser.add_argument("-p", "--profile", help="profile JSON file (output of the 'profile' command); required for rate/guide")
+    parser.add_argument("-p", "--profile", help="profile JSON file (output of the 'profile' command); required for rate/guide/screen")
     parser.add_argument("-m", "--model", help="override AI_MODEL from .env for this run")
     args = parser.parse_args()
     if args.command != "profile" and not args.profile:
