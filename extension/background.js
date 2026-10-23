@@ -1,5 +1,5 @@
 
-const AXIOS_SERVER = "http://10.200.20.64:8765";
+const AXIOS_SERVER = "http://100.114.26.88:8765";
 
 // --------------------------------------------------
 // AUTHENTICATION

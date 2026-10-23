@@ -6,17 +6,17 @@ The AI server runs on one laptop. The extension calls it over the wifi network. 
 
 | | |
 |---|---|
-| **Base URL** | `http://<server laptop IP>:8765`. The server prints this at startup (`URL for the extension: ...`). Currently `http://10.200.20.64:8765`. |
+| **Base URL** | `http://<server laptop IP>:8765`. The server prints this at startup (`URL for the extension: ...`). Currently `http://100.114.26.88:8765`. |
 | **Auth** | Every request except `GET /health` must send the header `X-Axios-Token: <team token>`. Get the token privately from whoever runs the server. Never commit it. (A server started with `--host 127.0.0.1` for local-only testing doesn't check the token.) |
 | **Content type** | Send `Content-Type: application/json` with every POST. |
 | **CORS** | Requests from any origin are allowed, and the `X-Axios-Token` header is allowed in preflight. |
-| **Manifest** | Add `"http://10.200.20.64:8765/*"` to `host_permissions` in `extension/manifest.json`. In Firefox the user may have to grant it under *about:addons → Axios → Permissions*. |
+| **Manifest** | Add `"http://100.114.26.88:8765/*"` to `host_permissions` in `extension/manifest.json`. In Firefox the user may have to grant it under *about:addons → Axios → Permissions*. |
 | **Speed** | Typical times: `/profile` ~3 s, `/rate` ~3–6 s, `/guide` ~7 s. They can take longer when the AI provider is busy. Show a loading state and don't set short timeouts. |
 
 Quick connectivity check from any laptop on the wifi:
 
 ```bash
-curl http://10.200.20.64:8765/health
+curl http://100.114.26.88:8765/health
 ```
 
 If it hangs, the wifi blocks traffic between laptops. Use a phone hotspot for both laptops (the IP will change).
@@ -220,7 +220,7 @@ Every error has the same shape:
 ## Example: calling it from `background.js`
 
 ```js
-const AXIOS_SERVER = "http://10.200.20.64:8765";
+const AXIOS_SERVER = "http://100.114.26.88:8765";
 const AXIOS_TOKEN = "<team token>"; // don't commit the real value
 
 async function axios(path, body) {
@@ -253,7 +253,7 @@ const guide = await axios("/guide", { job, profile: stored });
 Run from `ai interface/` (where `example_user.json` and `example_job.json` live):
 ```bash
 TOKEN=<team token>
-URL=http://10.200.20.64:8765
+URL=http://100.114.26.88:8765
 curl $URL/health
 
 # get a profile and keep it, like the extension would
