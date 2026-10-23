@@ -69,7 +69,11 @@ Rules:
   buzzwords: "salariu motivant", "loc de muncă plăcut", "echipă dinamică" go only in vague_details.
 - Vague phrases instead of facts ("salariu motivant", "loc de muncă plăcut", ...) or missing basics
   (pay, schedule, location, physical demands) mean "vague": true.
-- Rating 1-10 (10 = fits every need). Missing information keeps it moderate, not high or low.
+- Rating 1-10 (10 = fits every need). Only the person's needs decide the rating: judge it as if pay,
+  benefits, buzzwords and company culture were not in the posting at all, so a posting that clearly
+  meets every need gets 10 even when the pay is missing or it says "salariu motivant, echipă dinamică".
+  Report that vagueness in vague / vague_details, never in the rating. Missing information about something a need depends on (physical demands,
+  access to the building, schedule flexibility, ...) keeps the rating moderate, not high or low.
 - Be brief: short phrases, at most 5 work conditions. Write in {language}.
 
 Respond with ONLY this JSON:

@@ -126,7 +126,7 @@ Rates how well a job fits the user's profile, describes the work conditions, and
 
 | Field | Type | Meaning |
 |---|---|---|
-| `rating` | integer 1–10 or `null` | 10 = clearly compatible, 1 = clearly incompatible. Always clamped to 1–10. `null` only if the model returned garbage. |
+| `rating` | integer 1–10 or `null` | 10 = clearly compatible, 1 = clearly incompatible. Only the user's needs decide it: vagueness about pay, benefits or buzzwords shows up in `vague` but doesn't lower the rating. Always clamped to 1–10. `null` only if the model returned garbage. |
 | `rating_explanation` | string | Why this rating, in 1–2 sentences |
 | `work_conditions` | `{condition, source}[]` | At most 5. `source` is `"stated"` (in the posting) or `"typical"` (inferred from the job type, e.g. construction means heavy labour). Show these differently in the UI. |
 | `conflicts_with_needs` | string[] | Needs from the profile that the job appears to break (empty if none) |
