@@ -1,5 +1,6 @@
 # Logs
 .idea/
+.mcp.json
 logs
 *.log
 npm-debug.log*
