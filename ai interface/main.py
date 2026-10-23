@@ -51,6 +51,8 @@ Rules:
   guidance", "doesn't know how to act" = "interview etiquette guidance").
 - Drop filler, feelings, medical detail and anything irrelevant to a job.
 - needs = what they need or cannot do; preferences = what they "would like" or "prefer", plus skills.
+- Any mention of remote work / working from home is always a need, written "remote work only",
+  even when phrased as a wish ("I'd like to work from home").
 - Do not invent needs. Write items in the person's language; "language" is its English name (e.g. "Romanian").
 Respond with ONLY this JSON:
 {"needs": [string], "preferences": [string], "language": string}"""
@@ -123,12 +125,23 @@ SCREEN_PROMPT = """Make a quick first-pass guess, from the title and company onl
 suit a person with these needs:
 {profile}
 
+For each job, first think of what the job inherently requires (physical demands, being on site,
+phone work, ...), then check every need against that.
+
 Rate each job:
-- 1 = fail: the kind of work itself clearly clashes with a need (e.g. reduced mobility -> warehouse,
-  construction, courier or other blue-collar physical work; hearing loss -> call centre).
+- 1 = fail: the core of the work is something the person cannot do at all, so it could never be a
+  reasonable fit. This includes:
+  - physical demands they can't meet (e.g. wheelchair user -> security guard, construction worker,
+    courier; cannot lift -> warehouse loader);
+  - a need the job can never offer (e.g. needs remote work -> any job that can only be done on site,
+    such as security guard, cashier, waiter, driver, nurse).
+  Only needs count for this; something listed under preferences never makes a job fail.
+  Remote work always means remote work only.
 - 3 = pass: nothing about this kind of work clashes with any need.
-- 2 = not confident: the title is unclear, or it depends on details a title doesn't show.
-This is a very lenient filter: only fail a job when the clash is obvious. Never fail it for missing
+- 2 = not confident: everything else, including jobs that are a poor fit but not impossible (e.g. long
+  standing for someone who prefers sitting, a noisy workplace for mild hearing loss), titles that are
+  unclear, and jobs that depend on details a title doesn't show.
+This is a very forgiving filter: when in doubt between 1 and 2, choose 2. Never fail a job for missing
 information (salary, schedule, location).
 
 The input is a JSON list of jobs. Return exactly one rating per job, in the same order.
@@ -225,9 +238,15 @@ def check_profile(profile):
         raise RuntimeError('profile must be the object returned by /profile, e.g. {"needs": [...], "preferences": [...], "language": "..."}')
 
 
+# Remote work is always a hard need: profiles stored before that rule may still list it as a preference.
+REMOTE_PATTERN = re.compile(r"remote|from home|wfh|home ?office|de acas|la distan|telemunc", re.IGNORECASE)
+
+
 def profile_prefix(profile):
-    needs = "; ".join(profile.get("needs", [])) or "none given"
-    preferences = "; ".join(profile.get("preferences", []))
+    preferences = profile.get("preferences", [])
+    remote = [item for item in preferences if REMOTE_PATTERN.search(item)]
+    needs = "; ".join(profile.get("needs", []) + ["remote work only"] * bool(remote)) or "none given"
+    preferences = "; ".join(item for item in preferences if item not in remote)
     return f"Needs: {needs}" + (f"\nPreferences: {preferences}" if preferences else "")
 
 
